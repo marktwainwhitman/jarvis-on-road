@@ -2,6 +2,7 @@ services:
   jarvis:
     build: .
     container_name: jarvis-on-road
+    network_mode: host
     volumes:
       - .:/app
     stdin_open: true
