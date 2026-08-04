@@ -1,0 +1,8 @@
+services:
+  jarvis:
+    build: .
+    container_name: jarvis-on-road
+    volumes:
+      - .:/app
+    stdin_open: true
+    tty: true
