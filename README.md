@@ -65,7 +65,8 @@ http://localhost:8000
 | `OBD_MOCK` | `true` para usar datos simulados; `false` para conexión real | `true` |
 | `OBD_READ_INTERVAL` | Segundos entre lecturas de PIDs | `1.0` |
 | `OBD_DTC_INTERVAL` | Segundos entre lecturas de códigos de avería | `30.0` |
-| `OBD_RECONNECT_INTERVAL` | Segundos entre reintentos de conexión si el adaptador OBD-II no responde o se desconecta | `10.0` |
+| `OBD_RECONNECT_INTERVAL` | Segundos base entre reintentos de conexión si el adaptador OBD-II no responde o se desconecta | `10.0` |
+| `OBD_MAX_RECONNECT_INTERVAL` | Máximo tiempo entre reintentos de conexión OBD (backoff exponencial) | `300.0` |
 | `OBD_PIDS` | Lista de PIDs separados por comas | `RPM,SPEED,COOLANT_TEMP,ENGINE_LOAD,THROTTLE_POS,INTAKE_TEMP` |
 | `JARVIS_HOST` | Dirección en la que escucha el servidor | `0.0.0.0` |
 | `JARVIS_PORT` | Puerto del servidor web | `8000` |
@@ -75,6 +76,7 @@ http://localhost:8000
 | `OBD_ALERT_<PID>_CRIT` | Margen sobre el máximo antes de crítico (p. ej. `OBD_ALERT_RPM_CRIT=1000`) | ver `src/obd2/alerts.py` |
 | `LED_ENABLED` | `true` para activar el control de luces LED BLE | `false` |
 | `LED_MAC` | Dirección MAC de las luces LED ELK-BLEDOM | `""` |
+| `LED_BLE_TIMEOUT` | Segundos de timeout para operaciones BLE (conexión/escritura) | `15.0` |
 
 ## Endpoints y recursos
 
@@ -196,8 +198,14 @@ puede seguir usando sus datos móviles si los necesita.
 
 ### 4. Arrancar Jarvis On Road
 
+Para un arranque manual con el adaptador OBD-II real, primero vincula el
+puerto serie Bluetooth y luego levanta el contenedor:
+
 ```bash
 cd jarvis-on-road
+cp .env.example .env
+# edita .env con la MAC de tu adaptador OBD-II (OBD_BT_MAC)
+sudo bash scripts/obd_rfcomm_bind.sh
 OBD_MOCK=false OBD_PORT=/dev/rfcomm0 docker compose up --build -d
 ```
 
@@ -223,6 +231,20 @@ sudo systemctl enable docker
 
 Con esto, tras cualquier reinicio o corte de corriente, Jarvis On Road estará
 disponible sin tener que ejecutar nada manualmente.
+
+### Notas sobre Bluetooth en Docker
+
+- El acceso a los LEDs BLE se hace a través de BlueZ via D-Bus, por eso se
+  monta `/var/run/dbus` y se usa `network_mode: host`.
+- El acceso al adaptador OBD-II serie se realiza a través del nodo
+  `/dev/rfcomm0`, que debe existir en el host. El script
+  `scripts/obd_rfcomm_bind.sh` lo crea; si vas a usar el arranque automático,
+  el servicio `jarvis.service` lo ejecuta antes de levantar el contenedor.
+  Si `/dev/rfcomm0` no existe, la app seguira funcionando (web y LEDs), pero
+  el lector OBD reintentara la conexion periodicamente.
+- `privileged: true` es la opción más permisiva; si prefieres reducir
+  privilegios, puedes probar a quitarlo y usar `cap_add: [NET_ADMIN]` más
+  los `devices` necesarios, pero esto requiere ajustes según tu hardware.
 
 ## Luces LED BLE (ELK-BLEDOM / Zengge)
 

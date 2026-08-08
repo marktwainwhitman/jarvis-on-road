@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.venv
+venv
+*.egg-info
+
+# Tests y docs
+/tests
+docs
+*.md
+
+# Configuracion local
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Sistema
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+[Unit]
+Description=Jarvis On Road
+Requires=docker.service bluetooth.service
+After=docker.service bluetooth.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/home/pi/jarvis-on-road
+
+# Carga las variables de entorno del repo (OBD_BT_MAC, LED_MAC, etc.).
+# Ajusta la ruta si clonaste el repo en otro sitio.
+EnvironmentFile=/home/pi/jarvis-on-road/.env
+
+# Asegura que el adaptador OBD-II este vinculado a /dev/rfcomm0
+# antes de levantar el contenedor. Si falla, el contenedor arranca igual
+# y el lector OBD reintentara la conexion por software.
+ExecStartPre=/home/pi/jarvis-on-road/scripts/obd_rfcomm_bind.sh
+
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

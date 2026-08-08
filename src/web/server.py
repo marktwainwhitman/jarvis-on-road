@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
@@ -31,14 +32,16 @@ class BrightnessPayload(BaseModel):
 
 
 def create_app(reader: OBD2Reader, led_controller: LEDController = None) -> FastAPI:
-    app = FastAPI(title="Jarvis On Road", version="0.2.0")
     led_controller = led_controller or LEDController()
 
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-    @app.on_event("shutdown")
-    async def on_shutdown():
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        yield
         await led_controller.disconnect()
+
+    app = FastAPI(title="Jarvis On Road", version="0.2.0", lifespan=_lifespan)
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/")
     async def root():

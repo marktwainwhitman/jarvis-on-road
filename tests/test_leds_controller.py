@@ -1,5 +1,6 @@
 """Tests para el controlador BLE de LEDs, usando un `bleak` simulado."""
 
+import asyncio
 import sys
 import types
 
@@ -14,6 +15,7 @@ class FakeBleakClient:
     created_instances: list["FakeBleakClient"] = []
     fail_connect = False
     fail_write = False
+    hang_write = False
 
     def __init__(self, mac_address, timeout=10.0):
         self.mac_address = mac_address
@@ -33,6 +35,8 @@ class FakeBleakClient:
     async def write_gatt_char(self, uuid, data, response=False):
         if FakeBleakClient.fail_write:
             raise RuntimeError("fallo simulado de escritura BLE")
+        if FakeBleakClient.hang_write:
+            await asyncio.sleep(10.0)
         self.written.append((uuid, data))
 
 
@@ -41,6 +45,7 @@ def fake_bleak(monkeypatch):
     FakeBleakClient.created_instances = []
     FakeBleakClient.fail_connect = False
     FakeBleakClient.fail_write = False
+    FakeBleakClient.hang_write = False
 
     fake_module = types.ModuleType("bleak")
     fake_module.BleakClient = FakeBleakClient
@@ -146,7 +151,6 @@ async def test_set_color_applies_current_brightness():
 @pytest.mark.asyncio
 async def test_commands_are_serialized_with_lock():
     controller = make_controller()
-    import asyncio
 
     results = await asyncio.gather(
         controller.turn_on(),
@@ -158,3 +162,21 @@ async def test_commands_are_serialized_with_lock():
     # Solo debería haberse creado un cliente puesto que el lock serializa
     # las conexiones y la conexión se mantiene abierta entre comandos.
     assert len(FakeBleakClient.created_instances) == 1
+
+
+@pytest.mark.asyncio
+async def test_hanging_write_is_aborted_and_does_not_deadlock(fake_bleak):
+    controller = make_controller()
+    controller._ble_timeout = 0.1  # timeout muy corto para el test
+    fake_bleak.hang_write = True
+
+    # El primer comando debería fallar por timeout, no quedarse colgado.
+    ok = await controller.turn_on()
+    assert ok is False
+    assert controller.status["on"] is False
+
+    # Tras el timeout, el lock se ha liberado: un comando posterior funciona.
+    fake_bleak.hang_write = False
+    ok = await controller.turn_on()
+    assert ok is True
+    assert controller.status["on"] is True

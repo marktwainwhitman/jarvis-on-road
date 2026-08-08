@@ -7,17 +7,18 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-      # OBD2 real por puerto serie Bluetooth (rfcomm) en la Raspberry Pi:
-      - /dev/rfcomm0:/dev/rfcomm0
-      #
-      # LEDs BLE (ELK-BLEDOM): bleak usa BlueZ a través de D-Bus, no accede
-      # directamente a /dev/bluetooth ni /sys/class/bluetooth, así que basta
-      # con exponer el socket de D-Bus del sistema:
+      # LEDs BLE (ELK-BLEDOM): bleak usa BlueZ a través de D-Bus. El puerto
+      # serie /dev/rfcomm0 para el OBD-II se crea en el host (vía
+      # scripts/obd_rfcomm_bind.sh o un servicio systemd) y el contenedor
+      # lo ve gracias a privileged: true; no se monta explicitamente para
+      # evitar que docker compose falle si aun no existe al arrancar.
       - /var/run/dbus:/var/run/dbus
     stdin_open: true
     tty: true
-    # Necesario para usar Bluetooth (OBD2 y LEDs BLE) desde el contenedor
-    # en Linux/Raspberry Pi. En Windows Docker Desktop déjalo comentado.
+    # privileged permite ver el adaptador Bluetooth y los dispositivos de
+    # serie dinamicos (/dev/rfcomm*) sin necesidad de montarlos concretos
+    # al inicio. En produccion se deberia reducir a cap_add/devices concretos
+    # una vez validado el hardware.
     privileged: true
     network_mode: host  # imprescindible para BLE: BlueZ identifica el
                          # adaptador por el nombre de host/red del sistema.

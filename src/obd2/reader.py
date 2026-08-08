@@ -26,14 +26,20 @@ class OBD2Reader:
         self._interval = SETTINGS.read_interval
         self._dtc_interval = SETTINGS.dtc_interval
         self._reconnect_interval = SETTINGS.obd_reconnect_interval
+        self._max_reconnect_interval = SETTINGS.obd_max_reconnect_interval
         self._pids = SETTINGS.pids
         self._latest_data: Dict[str, Any] = {"dtcs": [], "connected": False}
         self._last_update: str = ""
         self._last_dtc_read: float = 0.0
         self._last_connect_attempt: float = 0.0
+        self._consecutive_failures = 0
         self._running = False
         self._thread: threading.Thread | None = None
+        # Protege el cache de muestras leidas por el hilo lector y consultado
+        # por el event loop de FastAPI.
         self._lock = threading.Lock()
+        # Protege el acceso a self._connection (cierre, reconexion y lecturas).
+        self._conn_lock = threading.Lock()
 
     def start(self) -> None:
         if self._running:
@@ -46,18 +52,29 @@ class OBD2Reader:
     def stop(self) -> None:
         self._running = False
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-        if self._connection is not None:
-            self._connection.close()
+            self._thread.join(timeout=5.0)
+            if self._thread.is_alive():
+                logger.warning(
+                    "El hilo lector OBD-II no finalizó limpiamente tras 5s."
+                )
+        with self._conn_lock:
+            if self._connection is not None:
+                try:
+                    self._connection.close()
+                except Exception:
+                    logger.exception("Error cerrando conexión OBD-II al detener")
+                self._connection = None
         logger.info("Lector OBD-II detenido.")
 
     def _loop(self) -> None:
         while self._running:
-            if self._connection is None or not self._connection.is_connected():
-                self._try_connect()
+            self._try_connect()
 
-            if self._connection is not None:
-                sample = self._read_sample()
+            with self._conn_lock:
+                if self._connection is not None:
+                    sample = self._read_sample_locked()
+                else:
+                    sample = {"connected": False, "dtcs": []}
                 with self._lock:
                     self._latest_data = sample
                     self._last_update = datetime.now(timezone.utc).isoformat()
@@ -67,27 +84,41 @@ class OBD2Reader:
         if not self._manage_connection:
             return
         now = time.time()
-        if now - self._last_connect_attempt < self._reconnect_interval:
+        # Backoff exponencial: empieza en reconnect_interval y duplica en cada
+        # fallo consecutivo hasta max_reconnect_interval.
+        backoff = min(
+            self._reconnect_interval * (2 ** max(0, self._consecutive_failures - 1)),
+            self._max_reconnect_interval,
+        )
+        if now - self._last_connect_attempt < backoff:
             return
         self._last_connect_attempt = now
-        try:
-            if self._connection is not None:
-                try:
-                    self._connection.close()
-                except Exception:
-                    logger.exception("Error cerrando conexión OBD-II previa")
-            self._connection = create_connection(
-                SETTINGS.obd_port, self._pids, mock=SETTINGS.obd_mock
-            )
-            logger.info("Conexión OBD-II establecida.")
-        except Exception:
-            logger.exception(
-                "No se pudo conectar a OBD-II; reintentando en %ss",
-                self._reconnect_interval,
-            )
-            self._connection = None
+        with self._conn_lock:
+            try:
+                if self._connection is not None:
+                    try:
+                        self._connection.close()
+                    except Exception:
+                        logger.exception("Error cerrando conexión OBD-II previa")
+                self._connection = create_connection(
+                    SETTINGS.obd_port, self._pids, mock=SETTINGS.obd_mock
+                )
+                self._consecutive_failures = 0
+                logger.info("Conexión OBD-II establecida.")
+            except Exception:
+                self._consecutive_failures += 1
+                logger.exception(
+                    "No se pudo conectar a OBD-II; reintentando en %.0fs",
+                    min(
+                        self._reconnect_interval
+                        * (2 ** max(0, self._consecutive_failures - 1)),
+                        self._max_reconnect_interval,
+                    ),
+                )
+                self._connection = None
 
-    def _read_sample(self) -> Dict[str, Any]:
+    def _read_sample_locked(self) -> Dict[str, Any]:
+        # Debe llamarse con self._conn_lock adquirido.
         sample: Dict[str, Any] = {"connected": self._connection.is_connected()}
         for pid in self._pids:
             try:
@@ -124,9 +155,14 @@ class OBD2Reader:
         return snapshot
 
     def get_status(self) -> Dict[str, Any]:
-        if self._connection is None:
-            return {"connected": False, "port": SETTINGS.obd_port, "pids": self._pids}
-        return self._connection.status()
+        with self._conn_lock:
+            if self._connection is None:
+                return {
+                    "connected": False,
+                    "port": SETTINGS.obd_port,
+                    "pids": self._pids,
+                }
+            return self._connection.status()
 
 
 def _serialize_value(value: Any) -> Any:

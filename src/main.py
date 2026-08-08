@@ -1,6 +1,5 @@
 """Punto de entrada principal de Jarvis On Road."""
 
-import asyncio
 import logging
 import socket
 import sys
@@ -59,7 +58,6 @@ def main() -> None:
         logger.info("Interrupción recibida, cerrando...")
     finally:
         reader.stop()
-        asyncio.run(led_controller.disconnect())
         logger.info("Sistema detenido.")
 
 
