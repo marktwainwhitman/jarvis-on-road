@@ -25,6 +25,9 @@ fi
 echo "Añadiendo usuario actual al grupo docker..."
 usermod -aG docker "${SUDO_USER:-$USER}" || true
 
+echo "Activando arranque automático de Docker..."
+systemctl enable docker
+
 echo "Activando Bluetooth..."
 if command -v bluetoothctl >/dev/null 2>&1; then
     systemctl enable bluetooth

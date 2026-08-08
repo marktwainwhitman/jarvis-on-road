@@ -207,6 +207,23 @@ Con `-d` el contenedor corre en segundo plano. Para ver los logs:
 docker compose logs -f
 ```
 
+### 5. Arranque automático al encender la Raspberry Pi
+
+El `docker-compose.yml` incluye `restart: unless-stopped`, así que una vez
+que el contenedor se ha creado con `docker compose up -d`, Docker lo volverá
+a arrancar automáticamente cada vez que la Raspberry Pi se encienda (siempre
+que no lo hayas parado tú manualmente con `docker compose stop`).
+
+Solo tienes que asegurarte de que el propio servicio de Docker arranca con el
+sistema (esto ya lo hace `scripts/setup_pi.sh`, o puedes activarlo a mano):
+
+```bash
+sudo systemctl enable docker
+```
+
+Con esto, tras cualquier reinicio o corte de corriente, Jarvis On Road estará
+disponible sin tener que ejecutar nada manualmente.
+
 ## Luces LED BLE (ELK-BLEDOM / Zengge)
 
 El panel web incluye un control para luces LED del coche que usen el protocolo

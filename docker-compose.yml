@@ -2,29 +2,30 @@ services:
   jarvis:
     build: .
     container_name: jarvis-on-road
+    restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
       - .:/app
-      # Para el OBD2 real por puerto serie Bluetooth (rfcomm) en Linux/Raspberry Pi:
-      # - /dev/rfcomm0:/dev/rfcomm0
+      # OBD2 real por puerto serie Bluetooth (rfcomm) en la Raspberry Pi:
+      - /dev/rfcomm0:/dev/rfcomm0
       #
-      # Para los LEDs BLE (ELK-BLEDOM): bleak usa BlueZ a través de D-Bus, no
-      # accede directamente a /dev/bluetooth ni /sys/class/bluetooth, así que
-      # basta con exponer el socket de D-Bus del sistema:
-      # - /var/run/dbus:/var/run/dbus
+      # LEDs BLE (ELK-BLEDOM): bleak usa BlueZ a través de D-Bus, no accede
+      # directamente a /dev/bluetooth ni /sys/class/bluetooth, así que basta
+      # con exponer el socket de D-Bus del sistema:
+      - /var/run/dbus:/var/run/dbus
     stdin_open: true
     tty: true
     # Necesario para usar Bluetooth (OBD2 y LEDs BLE) desde el contenedor
     # en Linux/Raspberry Pi. En Windows Docker Desktop déjalo comentado.
-    # privileged: true
-    # network_mode: host  # imprescindible para BLE: BlueZ identifica el
-    #                      # adaptador por el nombre de host/red del sistema.
+    privileged: true
+    network_mode: host  # imprescindible para BLE: BlueZ identifica el
+                         # adaptador por el nombre de host/red del sistema.
     environment:
-      - OBD_MOCK=true
+      - OBD_MOCK=false
+      - OBD_PORT=/dev/rfcomm0
       - JARVIS_HOST=0.0.0.0
       - JARVIS_PORT=8000
       - JARVIS_LOG_LEVEL=info
-      # Descomenta y configura para las luces LED BLE en Raspberry Pi.
-      # - LED_ENABLED=true
-      # - LED_MAC=BE:FF:F0:01:04:A8
+      - LED_ENABLED=true
+      - LED_MAC=BE:27:C8:00:C4:D9
