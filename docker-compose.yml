@@ -25,8 +25,25 @@ services:
     environment:
       - OBD_MOCK=false
       - OBD_PORT=/dev/rfcomm0
+      # MAC del adaptador OBD-II Bluetooth del coche. El binding real a
+      # /dev/rfcomm0 lo hace scripts/obd_rfcomm_bind.sh en el host (que ya
+      # usa esta misma MAC como valor por defecto).
+      - OBD_BT_MAC=04:25:E8:5B:01:EB
       - JARVIS_HOST=0.0.0.0
       - JARVIS_PORT=8000
       - JARVIS_LOG_LEVEL=info
       - LED_ENABLED=true
       - LED_MAC=BE:27:C8:00:C4:D9
+      # La base de datos SQLite vive en ./data, que ya persiste en el host
+      # gracias al bind mount ".:/app" de arriba.
+      - JARVIS_DB_PATH=data/jarvis.db
+      - JARVIS_DB_RETENTION_DAYS=30
+      # Automatización día/noche de los LEDs (amanecer/atardecer calculado
+      # para la zona Huelva-Sevilla-Cádiz; margen de error ~30 min).
+      - LED_AUTO_MODE=false
+      - LED_AUTO_LAT=37.2
+      - LED_AUTO_LON=-6.4
+      - LED_AUTO_TZ=Europe/Madrid
+      # Encender 30 min antes del atardecer real (el apagado sigue
+      # ocurriendo en el amanecer real).
+      - LED_AUTO_PRE_LIGHT_MINUTES=30.0

@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 
 from src.config import SETTINGS
 from src.obd2.alerts import evaluate
@@ -16,13 +16,21 @@ logger = logging.getLogger(__name__)
 class OBD2Reader:
     """Lee PIDs de forma periódica y guarda la última muestra."""
 
-    def __init__(self, connection: OBD2Connection = None):
+    def __init__(
+        self,
+        connection: OBD2Connection = None,
+        on_sample: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ):
         # Si se inyecta una conexión (p. ej. en tests) se usa tal cual y no se
         # gestiona su reconexión automática. Si no, la conexión se crea de
         # forma perezosa dentro del hilo del lector para no bloquear el
         # arranque de la aplicación si el adaptador OBD-II no responde.
         self._connection = connection
         self._manage_connection = connection is None
+        # Callback opcional invocado con cada muestra leída (p. ej. para
+        # persistirla en el histórico). Nunca debe bloquear ni propagar
+        # excepciones al hilo lector.
+        self._on_sample = on_sample
         self._interval = SETTINGS.read_interval
         self._dtc_interval = SETTINGS.dtc_interval
         self._reconnect_interval = SETTINGS.obd_reconnect_interval
@@ -78,6 +86,12 @@ class OBD2Reader:
                 with self._lock:
                     self._latest_data = sample
                     self._last_update = datetime.now(timezone.utc).isoformat()
+
+            if self._on_sample is not None:
+                try:
+                    self._on_sample(sample)
+                except Exception:
+                    logger.exception("Error en callback on_sample")
             time.sleep(self._interval)
 
     def _try_connect(self) -> None:

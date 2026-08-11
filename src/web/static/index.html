@@ -1,443 +1,117 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#0f172a">
-    <link rel="icon" href="data:,">
-    <title>Jarvis On Road</title>
-    <style>
-        * { box-sizing: border-box; }
-        :root {
-            --bg: #0f172a;
-            --surface: #1e293b;
-            --text: #e2e8f0;
-            --muted: #94a3b8;
-            --ok: #22c55e;
-            --warn: #f59e0b;
-            --crit: #ef4444;
-            --info: #38bdf8;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 1rem;
-        }
-        h1 { text-align: center; margin: 0; font-size: 1.6rem; }
-        .subtitle { text-align: center; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; }
-        .status-bar {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 0.75rem;
-        }
-        .status-bar > div {
-            flex: 1;
-            text-align: center;
-            padding: 0.55rem;
-            border-radius: 0.5rem;
-            font-weight: 700;
-            font-size: 0.85rem;
-        }
-        .status-connected { background: rgba(34, 197, 94, 0.15); color: var(--ok); border: 1px solid rgba(34,197,94,0.3); }
-        .status-disconnected { background: rgba(239, 68, 68, 0.15); color: var(--crit); border: 1px solid rgba(239,68,68,0.3); }
-        .level-ok { background: rgba(34, 197, 94, 0.15); color: var(--ok); border: 1px solid rgba(34,197,94,0.3); }
-        .level-warning { background: rgba(245, 158, 11, 0.15); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
-        .level-critical { background: rgba(239, 68, 68, 0.15); color: var(--crit); border: 1px solid rgba(239,68,68,0.3); animation: pulse 1.2s infinite; }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        .alerts, .dtcs {
-            display: none;
-            margin-bottom: 0.75rem;
-            border-radius: 0.75rem;
-            padding: 0.75rem;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.35);
-        }
-        .alerts.visible, .dtcs.visible { display: block; }
-        .alerts h2, .dtcs h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--crit); }
-        .alert-item, .dtc-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.4rem 0;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            font-size: 0.9rem;
-        }
-        .alert-item:last-child, .dtc-item:last-child { border-bottom: none; }
-        .alert-level { font-size: 0.65rem; text-transform: uppercase; padding: 0.15rem 0.4rem; border-radius: 0.25rem; font-weight: 700; }
-        .dtc-code {
-            background: var(--crit);
-            color: #fff;
-            font-family: monospace;
-            font-size: 0.75rem;
-            padding: 0.15rem 0.4rem;
-            border-radius: 0.25rem;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-        .alert-level.warning { background: var(--warn); color: #000; }
-        .alert-level.critical { background: var(--crit); color: #fff; }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 0.75rem;
-        }
-        .card {
-            background: var(--surface);
-            border-radius: 0.75rem;
-            padding: 0.85rem;
-            text-align: center;
-            border: 2px solid transparent;
-            transition: border-color 0.3s, background 0.3s;
-        }
-        .card.ok { border-color: rgba(34,197,94,0.35); }
-        .card.warning { border-color: var(--warn); background: rgba(245,158,11,0.08); }
-        .card.critical { border-color: var(--crit); background: rgba(239,68,68,0.1); }
-        .card.unknown { border-color: #475569; }
-        .card .label {
-            color: var(--muted);
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.2rem;
-        }
-        .card .value { font-size: 1.8rem; font-weight: 800; color: var(--info); }
-        .card .unit { font-size: 0.75rem; color: var(--muted); }
-        .card .range {
-            margin-top: 0.35rem;
-            font-size: 0.7rem;
-            color: var(--muted);
-        }
-        .card .message {
-            margin-top: 0.35rem;
-            font-size: 0.75rem;
-            color: var(--warn);
-            min-height: 1em;
-        }
-        .last-update {
-            text-align: center;
-            color: #64748b;
-            font-size: 0.75rem;
-            margin-top: 1rem;
-        }
-        .led-panel {
-            background: var(--surface);
-            border-radius: 0.75rem;
-            padding: 0.85rem;
-            margin-bottom: 0.75rem;
-        }
-        .led-panel h2 {
-            margin: 0 0 0.6rem;
-            font-size: 1rem;
-            color: var(--info);
-        }
-        .led-row {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .led-row label {
-            color: var(--muted);
-            font-size: 0.8rem;
-            min-width: 5rem;
-        }
-        .led-row input[type="range"] { flex: 1; min-width: 120px; }
-        .led-row input[type="color"] {
-            border: none;
-            width: 3rem;
-            height: 2rem;
-            background: none;
-            cursor: pointer;
-        }
-        .led-btn {
-            background: #334155;
-            color: var(--text);
-            border: none;
-            border-radius: 0.5rem;
-            padding: 0.5rem 0.9rem;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-        .led-btn.on { background: var(--ok); }
-        .led-btn.off { background: var(--crit); }
-        .led-status { font-size: 0.75rem; color: var(--muted); }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="Asistente para vehículo Jarvis On Road">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/static/css/main.css">
+  <title>Jarvis On Road</title>
 </head>
 <body>
-    <h1>Jarvis On Road</h1>
-    <div class="subtitle">Datos del OBD-II en tiempo real</div>
-
-    <div class="status-bar">
-        <div id="connection-status" class="status-disconnected">Conectando…</div>
-        <div id="alert-level" class="level-ok">Sin alertas</div>
+  <header>
+    <div class="header-content">
+      <div>
+        <h1>Jarvis On Road</h1>
+        <div class="subtitle">Asistente de vehículo</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+        <span id="connection-dot" class="status-dot connecting" aria-hidden="true"></span>
+        <span id="connection-text" class="subtitle" style="margin:0;">Conectando…</span>
+      </div>
     </div>
+  </header>
 
-    <div id="alerts" class="alerts">
-        <h2>⚠️ Avisos</h2>
-        <div id="alert-list"></div>
-    </div>
+  <main>
+    <section id="tab-dashboard" class="tab active" aria-label="Panel principal">
+      <div class="status-bar">
+        <div id="obd-chip" class="status-chip">
+          OBD-II
+          <strong>Desconocido</strong>
+        </div>
+        <div id="alert-chip" class="status-chip ok">
+          Alertas
+          <strong>Sin alertas</strong>
+        </div>
+        <div id="dtc-chip" class="status-chip ok">
+          Averías
+          <strong>Sin DTCs</strong>
+        </div>
+      </div>
 
-    <div id="dtcs" class="dtcs">
-        <h2>🔧 Códigos de avería</h2>
-        <div id="dtc-list"></div>
-    </div>
+      <div id="obd-grid" class="card-grid"></div>
 
-    <div class="led-panel" id="led-panel">
-        <h2>💡 Luces LED</h2>
+      <div id="last-update" class="empty-state">Esperando datos…</div>
+    </section>
+
+    <section id="tab-leds" class="tab" aria-label="Control de luces LED">
+      <div id="led-section" class="led-section">
+        <h2>Luces LED</h2>
         <div class="led-row">
-            <button class="led-btn on" id="led-on">Encender</button>
-            <button class="led-btn off" id="led-off">Apagar</button>
-            <span class="led-status" id="led-status">Cargando…</span>
+          <button id="led-on" class="btn on" type="button">Encender</button>
+          <button id="led-off" class="btn off" type="button">Apagar</button>
         </div>
         <div class="led-row">
-            <label>Color</label>
-            <input type="color" id="led-color" value="#ffffff">
+          <label for="led-color">Color</label>
+          <input id="led-color" type="color" value="#ffffff" aria-label="Color LED">
         </div>
         <div class="led-row">
-            <label>Brillo</label>
-            <input type="range" id="led-brightness" min="0" max="100" value="100">
+          <label for="led-brightness">Brillo</label>
+          <input id="led-brightness" type="range" min="0" max="100" value="100" aria-label="Brillo LED">
         </div>
-    </div>
+        <div class="led-row">
+          <label for="led-auto">Automático (amanecer/atardecer)</label>
+          <input id="led-auto" type="checkbox" aria-label="Modo automático LED">
+        </div>
+        <div id="led-auto-info" class="led-status"></div>
+        <div id="led-status" class="led-status">Cargando estado…</div>
+      </div>
+    </section>
 
-    <div id="grid" class="grid"></div>
-    <div id="last-update" class="last-update">—</div>
+    <section id="tab-alerts" class="tab" aria-label="Alertas y diagnóstico">
+      <div class="panel">
+        <h2>Alertas activas</h2>
+        <div id="alerts-list">
+          <div class="empty-state">No hay alertas activas</div>
+        </div>
+      </div>
 
-    <script>
-        const grid = document.getElementById('grid');
-        const connStatus = document.getElementById('connection-status');
-        const alertLevelEl = document.getElementById('alert-level');
-        const alertsBox = document.getElementById('alerts');
-        const alertList = document.getElementById('alert-list');
-        const dtcsBox = document.getElementById('dtcs');
-        const dtcList = document.getElementById('dtc-list');
-        const lastUpdateEl = document.getElementById('last-update');
+      <div class="panel">
+        <h2>Códigos de avería</h2>
+        <div id="dtcs-list">
+          <div class="empty-state">No hay códigos de avería</div>
+        </div>
+      </div>
+    </section>
+  </main>
 
-        const units = {
-            RPM: 'rpm',
-            SPEED: 'km/h',
-            COOLANT_TEMP: '°C',
-            ENGINE_LOAD: '%',
-            THROTTLE_POS: '%',
-            INTAKE_TEMP: '°C',
-            FUEL_LEVEL: '%'
-        };
+  <nav aria-label="Navegación principal">
+    <ul>
+      <li>
+        <button data-tab="tab-dashboard" class="active" type="button" aria-label="Panel principal">
+          <span>Panel</span>
+        </button>
+      </li>
+      <li>
+        <button data-tab="tab-leds" type="button" aria-label="Luces LED">
+          <span>LEDs</span>
+        </button>
+      </li>
+      <li>
+        <button data-tab="tab-alerts" type="button" aria-label="Diagnóstico">
+          <span>Avisos</span>
+        </button>
+      </li>
+      <li>
+        <button id="install-btn" type="button" aria-label="Instalar aplicación">
+          <span>Instalar</span>
+        </button>
+      </li>
+    </ul>
+  </nav>
 
-        let recommendations = {};
-
-        async function loadRecommendations() {
-            try {
-                const res = await fetch('/api/obd/recommendations');
-                const list = await res.json();
-                recommendations = Object.fromEntries(list.map(r => [r.pid, r]));
-            } catch (err) {
-                console.error('No se pudieron cargar recomendaciones:', err);
-            }
-        }
-
-        function formatLabel(pid) {
-            const labels = {
-                RPM: 'Revoluciones',
-                SPEED: 'Velocidad',
-                COOLANT_TEMP: 'Temp. refrigerante',
-                ENGINE_LOAD: 'Carga motor',
-                THROTTLE_POS: 'Acelerador',
-                INTAKE_TEMP: 'Temp. admisión',
-                FUEL_LEVEL: 'Combustible'
-            };
-            return labels[pid] || pid.replace(/_/g, ' ');
-        }
-
-        function formatRange(pid) {
-            const rec = recommendations[pid];
-            if (!rec) return '';
-            const parts = [];
-            if (rec.min !== null && rec.min !== undefined) parts.push('mín ' + rec.min);
-            if (rec.max !== null && rec.max !== undefined) parts.push('máx ' + rec.max);
-            if (parts.length) return 'Recomendado: ' + parts.join(' / ') + ' ' + (units[pid] || '');
-            return '';
-        }
-
-        function updateAlerts(alerts, level) {
-            alertLevelEl.className = `level-${level}`;
-            if (level === 'ok') {
-                alertLevelEl.textContent = 'Sin alertas';
-                alertsBox.classList.remove('visible');
-                return;
-            }
-            alertLevelEl.textContent = level === 'critical' ? '⚠️ CRÍTICO' : '⚠️ Advertencia';
-            alertsBox.classList.add('visible');
-            alertList.innerHTML = '';
-            for (const alert of alerts) {
-                const div = document.createElement('div');
-                div.className = 'alert-item';
-                div.innerHTML = `<span class="alert-level ${alert.level}">${alert.level}</span>` +
-                    `<span><strong>${alert.label}</strong>: ${alert.value}${alert.unit} — ${alert.message}</span>`;
-                alertList.appendChild(div);
-            }
-            if (level === 'critical' && navigator.vibrate) {
-                navigator.vibrate([200, 100, 200]);
-            }
-        }
-
-        function updateDtcs(dtcs) {
-            if (!dtcs || dtcs.length === 0) {
-                dtcsBox.classList.remove('visible');
-                return;
-            }
-            dtcsBox.classList.add('visible');
-            dtcList.innerHTML = '';
-            for (const dtc of dtcs) {
-                const div = document.createElement('div');
-                div.className = 'dtc-item';
-                div.innerHTML = `<span class="dtc-code">${dtc.code}</span>` +
-                    `<span>${dtc.description}</span>`;
-                dtcList.appendChild(div);
-            }
-        }
-
-        function updateCards(data, pidStatus) {
-            for (const [pid, value] of Object.entries(data)) {
-                if (pid.startsWith('_') || pid === 'connected' || pid === 'alerts' || value === null || value === undefined) continue;
-                let card = document.getElementById('card-' + pid);
-                if (!card) {
-                    card = document.createElement('div');
-                    card.className = 'card';
-                    card.id = 'card-' + pid;
-                    card.innerHTML = `
-                        <div class="label"></div>
-                        <div class="value"></div>
-                        <div class="unit"></div>
-                        <div class="range"></div>
-                        <div class="message"></div>
-                    `;
-                    grid.appendChild(card);
-                }
-                const status = (pidStatus && pidStatus[pid]) || { level: 'unknown', message: null };
-                card.className = 'card ' + status.level;
-                card.querySelector('.label').textContent = formatLabel(pid);
-                card.querySelector('.value').textContent = value;
-                card.querySelector('.unit').textContent = units[pid] || '';
-                card.querySelector('.range').textContent = formatRange(pid);
-                card.querySelector('.message').textContent = status.message || '';
-            }
-        }
-
-        function update(data) {
-            const connected = data.connected === true;
-            connStatus.textContent = connected ? 'OBD-II conectado' : 'OBD-II desconectado (simulado)';
-            connStatus.className = connected ? 'status-connected' : 'status-disconnected';
-
-            const alerts = data.alerts || { level: 'ok', alerts: [], pids: {} };
-            updateAlerts(alerts.alerts, alerts.level);
-            updateDtcs(data.dtcs);
-            updateCards(data, alerts.pids);
-
-            if (data._last_update) {
-                const d = new Date(data._last_update);
-                lastUpdateEl.textContent = 'Última actualización: ' + d.toLocaleTimeString();
-            }
-        }
-
-        function connectWebSocket() {
-            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
-
-            ws.onmessage = (event) => {
-                try {
-                    update(JSON.parse(event.data));
-                } catch (err) {
-                    console.error('Error parseando datos:', err);
-                }
-            };
-
-            ws.onclose = () => {
-                connStatus.textContent = 'Reconectando…';
-                connStatus.className = 'status-disconnected';
-                setTimeout(connectWebSocket, 2000);
-            };
-        }
-
-        async function fallbackPolling() {
-            try {
-                const res = await fetch('/api/obd/data');
-                update(await res.json());
-            } catch (err) {
-                console.error('Error en polling:', err);
-                connStatus.textContent = 'Error de conexión';
-                connStatus.className = 'status-disconnected';
-            }
-        }
-
-        // --- Control de LEDs ---
-        const ledPanel = document.getElementById('led-panel');
-        const ledStatus = document.getElementById('led-status');
-        const ledOn = document.getElementById('led-on');
-        const ledOff = document.getElementById('led-off');
-        const ledColor = document.getElementById('led-color');
-        const ledBrightness = document.getElementById('led-brightness');
-
-        async function ledApi(path, body) {
-            const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
-            if (body) opts.body = JSON.stringify(body);
-            try {
-                const res = await fetch('/api/leds/' + path, opts);
-                const data = await res.json();
-                updateLedStatus(data.state);
-                return data.success;
-            } catch (err) {
-                console.error('Error LED API:', err);
-                ledStatus.textContent = 'Error de conexión';
-                return false;
-            }
-        }
-
-        function updateLedStatus(state) {
-            if (!state.enabled) {
-                ledPanel.style.display = 'none';
-                return;
-            }
-            ledPanel.style.display = 'block';
-            ledStatus.textContent = state.on ? 'Encendidas' : 'Apagadas';
-            if (state.color) ledColor.value = '#' + state.color.map(c => c.toString(16).padStart(2, '0')).join('');
-            if (state.brightness !== undefined) ledBrightness.value = state.brightness;
-        }
-
-        ledOn.addEventListener('click', () => ledApi('on'));
-        ledOff.addEventListener('click', () => ledApi('off'));
-        ledColor.addEventListener('input', (e) => {
-            const hex = e.target.value;
-            const r = parseInt(hex.slice(1, 3), 16);
-            const g = parseInt(hex.slice(3, 5), 16);
-            const b = parseInt(hex.slice(5, 7), 16);
-            ledApi('color', { r, g, b });
-        });
-        let brightnessTimeout;
-        ledBrightness.addEventListener('input', (e) => {
-            clearTimeout(brightnessTimeout);
-            brightnessTimeout = setTimeout(() => {
-                ledApi('brightness', { brightness: parseInt(e.target.value) });
-            }, 200);
-        });
-
-        fetch('/api/leds/status')
-            .then(r => r.json())
-            .then(updateLedStatus)
-            .catch(() => { ledPanel.style.display = 'none'; });
-
-        loadRecommendations();
-        if (window.WebSocket) {
-            connectWebSocket();
-        } else {
-            fallbackPolling();
-            setInterval(fallbackPolling, 1000);
-        }
-    </script>
+  <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

@@ -13,7 +13,9 @@ import uvicorn
 
 from src.config import SETTINGS
 from src.leds.controller import LEDController
+from src.leds.scheduler import DayNightScheduler
 from src.obd2.reader import OBD2Reader
+from src.storage.history import HistoryStore
 from src.web.server import create_app
 
 __version__ = "0.2.0"
@@ -31,8 +33,14 @@ def main() -> None:
     print(f"Versión {__version__}")
     print(f"Ejecutando en: {socket.gethostname()}")
 
+    logger.info("Iniciando histórico de datos OBD-II (%s)...", SETTINGS.db_path)
+    history_store = HistoryStore(
+        db_path=SETTINGS.db_path, retention_days=SETTINGS.db_retention_days
+    )
+    history_store.start()
+
     logger.info("Iniciando lector OBD-II...")
-    reader = OBD2Reader()
+    reader = OBD2Reader(on_sample=history_store.record)
     reader.start()
 
     logger.info("Inicializando controlador de LEDs...")
@@ -42,7 +50,19 @@ def main() -> None:
     else:
         logger.info("LEDs deshabilitados.")
 
-    app = create_app(reader, led_controller)
+    led_scheduler = DayNightScheduler(
+        led_controller,
+        latitude=SETTINGS.led_auto_lat,
+        longitude=SETTINGS.led_auto_lon,
+        timezone=SETTINGS.led_auto_timezone,
+        check_interval=SETTINGS.led_auto_check_interval,
+        auto_enabled=SETTINGS.led_auto_enabled,
+        pre_light_minutes=SETTINGS.led_auto_pre_light_minutes,
+    )
+    if led_scheduler.auto_enabled:
+        logger.info("Automatización día/noche de LEDs activada.")
+
+    app = create_app(reader, led_controller, history_store, led_scheduler)
 
     logger.info(
         "Servidor web disponible en http://%s:%s", SETTINGS.host, SETTINGS.port
@@ -58,6 +78,7 @@ def main() -> None:
         logger.info("Interrupción recibida, cerrando...")
     finally:
         reader.stop()
+        history_store.stop()
         logger.info("Sistema detenido.")
 
 

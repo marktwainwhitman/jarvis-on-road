@@ -8,7 +8,9 @@
 
 set -euo pipefail
 
-OBD_BT_MAC="${OBD_BT_MAC:-}"
+# MAC por defecto del adaptador OBD-II Bluetooth del coche. Se puede
+# sobreescribir con la variable de entorno OBD_BT_MAC si usas otro adaptador.
+OBD_BT_MAC="${OBD_BT_MAC:-04:25:E8:5B:01:EB}"
 OBD_MOCK="${OBD_MOCK:-false}"
 OBD_RETRIES="${OBD_RETRIES:-10}"
 

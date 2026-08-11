@@ -9,9 +9,12 @@ Type=oneshot
 RemainAfterExit=true
 WorkingDirectory=/home/pi/jarvis-on-road
 
-# Carga las variables de entorno del repo (OBD_BT_MAC, LED_MAC, etc.).
+# Carga variables de entorno opcionales para sobreescribir los valores por
+# defecto (ya configurados para este coche en docker-compose.yml y
+# scripts/obd_rfcomm_bind.sh). El "-" inicial hace que el servicio arranque
+# igual aunque el fichero no exista: no es necesario crear un .env a mano.
 # Ajusta la ruta si clonaste el repo en otro sitio.
-EnvironmentFile=/home/pi/jarvis-on-road/.env
+EnvironmentFile=-/home/pi/jarvis-on-road/.env
 
 # Asegura que el adaptador OBD-II este vinculado a /dev/rfcomm0
 # antes de levantar el contenedor. Si falla, el contenedor arranca igual

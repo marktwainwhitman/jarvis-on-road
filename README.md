@@ -77,23 +77,57 @@ http://localhost:8000
 | `LED_ENABLED` | `true` para activar el control de luces LED BLE | `false` |
 | `LED_MAC` | Dirección MAC de las luces LED ELK-BLEDOM | `""` |
 | `LED_BLE_TIMEOUT` | Segundos de timeout para operaciones BLE (conexión/escritura) | `15.0` |
+| `JARVIS_DB_PATH` | Ruta del fichero SQLite con el histórico de datos OBD-II | `data/jarvis.db` |
+| `JARVIS_DB_RETENTION_DAYS` | Días que se conservan las lecturas en crudo antes de purgarse (los agregados horarios se conservan siempre) | `30` |
+| `LED_AUTO_MODE` | `true` para activar el encendido/apagado automático de LEDs según amanecer/atardecer | `false` |
+| `LED_AUTO_LAT` / `LED_AUTO_LON` | Latitud/longitud aproximadas para calcular la salida y puesta de sol (por defecto, zona Huelva-Sevilla-Cádiz) | `37.2` / `-6.4` |
+| `LED_AUTO_TZ` | Zona horaria usada para el cálculo de amanecer/atardecer | `Europe/Madrid` |
+| `LED_AUTO_CHECK_INTERVAL` | Segundos entre comprobaciones de si toca cambiar de día a noche o viceversa | `60.0` |
+| `LED_AUTO_PRE_LIGHT_MINUTES` | Minutos que se anticipa el encendido respecto al atardecer real (el apagado sigue ocurriendo en el amanecer real) | `30.0` |
 
 ## Endpoints y recursos
 
 - `/` – redirige al panel web.
 - `/static/index.html` – panel web para móvil/escritorio.
+- `/manifest.json` – manifest de la PWA.
+- `/sw.js` – Service Worker para funcionamiento offline.
+- `/static/css/main.css` – estilos de la PWA.
+- `/static/js/*.js` – módulos JavaScript de la interfaz.
 - `/api/health` – estado básico del sistema.
 - `/api/obd/data` – última lectura de PIDs + alertas en JSON.
 - `/api/obd/status` – estado de la conexión OBD-II.
 - `/api/obd/alerts` – alertas calculadas a partir de la última lectura.
 - `/api/obd/recommendations` – valores recomendados por PID.
 - `/api/obd/dtcs` – códigos de avería (DTC) leídos del vehículo.
+- `/api/obd/history?pid=RPM&hours=1` – lecturas en crudo de un PID en las últimas N horas.
+- `/api/obd/stats?pid=RPM&days=7` – estadísticas horarias (mín/máx/media) de un PID en los últimos N días.
+- `/api/obd/events?days=7&type=alert|dtc` – historial de eventos (alertas activadas/desactivadas, DTCs nuevos).
 - `/api/leds/status` – estado de las luces LED.
 - `/api/leds/on` – encender LEDs.
 - `/api/leds/off` – apagar LEDs.
 - `/api/leds/color` – cambiar color RGB (`{ "r": 255, "g": 0, "b": 0 }`).
 - `/api/leds/brightness` – cambiar brillo (`{ "brightness": 50 }`).
+- `/api/leds/auto` – activar/desactivar el modo automático día/noche (`{ "enabled": true }`).
 - `/ws` – WebSocket con datos, alertas y DTCs en tiempo real.
+
+## PWA (Progressive Web App)
+
+La interfaz está construida como PWA y se sirve desde el propio backend:
+
+- `/manifest.json` – configuración de instalación.
+- `/sw.js` – Service Worker que cachea los recursos estáticos para funcionar offline.
+- `/static/index.html` – interfaz modular en HTML/CSS/JavaScript vanilla.
+
+Para instalar la app en Android:
+
+1. Conecta el móvil al Wi-Fi `JarvisOnRoad` de la Raspberry.
+2. Abre `http://192.168.4.1:8000` en Chrome/Edge/Samsung Internet.
+3. Toca "Instalar" cuando aparezca el banner o usa el botón "Instalar" de la barra inferior.
+
+Una vez instalada, la app funciona en modo standalone sin necesidad de Internet.
+La interfaz se mantiene disponible offline gracias al caché del Service Worker.
+Las lecturas en vivo de OBD-II y el control de LEDs requieren estar conectado
+a la red de Jarvis.
 
 ## Umbrales por defecto (Kia Ceed 2025 gasolina 1.0 T-GDI)
 
@@ -123,17 +157,24 @@ archivo `config/thresholds.json` o añadir perfiles por modelo.
 
 ## Uso real con adaptador Bluetooth OBD-II
 
-1. Empareja el adaptador (normalmente un ELM327) con la Raspberry Pi.
-2. Crea el puerto serie vía Bluetooth, por ejemplo `/dev/rfcomm0`:
-   ```bash
-   sudo rfcomm bind 0 XX:XX:XX:XX:XX:XX 1
-   ```
-3. En `docker-compose.yml` descomenta/configura `OBD_MOCK=false` y
-   `OBD_PORT=/dev/rfcomm0`.
-4. Arranca con:
+La MAC del adaptador OBD-II Bluetooth de este coche (`04:25:E8:5B:01:EB`) ya
+está configurada por defecto en `docker-compose.yml` y en
+`scripts/obd_rfcomm_bind.sh`, así que **no hace falta tocar nada**: basta con
+emparejar el adaptador una vez (paso 3 de la instalación) y hacer
+`git pull` + `docker compose up -d --build` para que todo funcione. Solo
+necesitas crear un `.env` (a partir de `.env.example`) si algún día cambias
+de adaptador OBD-II o de coche.
+
+1. Empareja el adaptador (normalmente un ELM327) con la Raspberry Pi (ver
+   sección "Emparejar el adaptador OBD-II Bluetooth" más abajo).
+2. Arranca con:
    ```bash
    docker compose up --build -d
    ```
+
+El binding a `/dev/rfcomm0` lo hace automáticamente
+`scripts/obd_rfcomm_bind.sh` (a mano o vía `jarvis.service` en el arranque
+automático) usando esa MAC por defecto.
 
 ## Instalación en Raspberry Pi
 
@@ -184,30 +225,34 @@ puede seguir usando sus datos móviles si los necesita.
 
 ### 3. Emparejar el adaptador OBD-II Bluetooth
 
+La MAC de este adaptador (`04:25:E8:5B:01:EB`) ya está puesta por defecto en
+el proyecto; solo falta emparejarlo una vez con la Raspberry (el pairing es
+un estado del sistema Bluetooth, no algo que viaje con el repo):
+
 1. Enciende el coche y conecta el adaptador ELM327 al puerto OBD-II.
 2. Empareja la Raspberry con el adaptador:
    ```bash
    bluetoothctl scan on
-   bluetoothctl pair XX:XX:XX:XX:XX:XX
-   bluetoothctl trust XX:XX:XX:XX:XX:XX
+   bluetoothctl pair 04:25:E8:5B:01:EB
+   bluetoothctl trust 04:25:E8:5B:01:EB
    ```
-3. Crea el puerto serie:
-   ```bash
-   sudo rfcomm bind 0 XX:XX:XX:XX:XX:XX 1
-   ```
+
+No hace falta ejecutar `rfcomm bind` a mano: lo hace
+`scripts/obd_rfcomm_bind.sh` automáticamente (ver siguiente paso).
 
 ### 4. Arrancar Jarvis On Road
 
-Para un arranque manual con el adaptador OBD-II real, primero vincula el
-puerto serie Bluetooth y luego levanta el contenedor:
+Con el adaptador ya emparejado, un arranque manual es tan sencillo como:
 
 ```bash
 cd jarvis-on-road
-cp .env.example .env
-# edita .env con la MAC de tu adaptador OBD-II (OBD_BT_MAC)
 sudo bash scripts/obd_rfcomm_bind.sh
-OBD_MOCK=false OBD_PORT=/dev/rfcomm0 docker compose up --build -d
+docker compose up --build -d
 ```
+
+No es necesario crear un `.env`: `OBD_MOCK=false`, `OBD_PORT=/dev/rfcomm0` y
+la MAC del adaptador ya están fijados en `docker-compose.yml` y en el propio
+script de binding.
 
 Con `-d` el contenedor corre en segundo plano. Para ver los logs:
 
@@ -290,6 +335,21 @@ puerto serie, no para los LEDs BLE).
 - Encender/apagar desde el panel web.
 - Selector de color RGB.
 - Regulación de brillo (0-100 %).
+- **Modo automático día/noche**: enciende los LEDs al anochecer y los apaga
+  al amanecer, calculando la salida y puesta de sol para una ubicación
+  aproximada (no requiere sensor de luz ni GPS: el OBD-II del coche no
+  expone esa información). Se activa con `LED_AUTO_MODE=true` o desde el
+  interruptor "Automático" en la pestaña de LEDs de la PWA. Por defecto la
+  ubicación está fijada a la zona Huelva-Sevilla-Cádiz (`LED_AUTO_LAT`/
+  `LED_AUTO_LON`, con un margen de error aceptable de ~30 min); si usas el
+  coche habitualmente en otra zona, ajusta esas variables. El encendido se
+  anticipa `LED_AUTO_PRE_LIGHT_MINUTES` (30 min por defecto) respecto al
+  atardecer real, para que las luces ya estén encendidas cuando empieza a
+  oscurecer en vez de esperar a la puesta de sol exacta; el apagado sigue
+  ocurriendo en el amanecer real. El modo manual (botones on/off) sigue
+  funcionando en cualquier momento; al reactivar el modo automático, este
+  vuelve a sincronizar el estado de los LEDs con el sol en la siguiente
+  comprobación (`LED_AUTO_CHECK_INTERVAL`, 60 s por defecto).
 
 ### Cómo encontrar la MAC de las luces
 
@@ -300,6 +360,33 @@ bluetoothctl scan on
 ```
 
 Busca un dispositivo llamado `ELK-BLEDOM` o similar y anota su dirección MAC.
+
+## Histórico de datos OBD-II (SQLite)
+
+Además de la última lectura en vivo, Jarvis On Road guarda un histórico en
+una base de datos SQLite (`src/storage/`), pensado para funcionar bien en la
+tarjeta SD de la Raspberry Pi:
+
+- **Lecturas en crudo** (`readings`, un valor por PID y ciclo de lectura):
+  se conservan solo `JARVIS_DB_RETENTION_DAYS` días (30 por defecto). Con la
+  configuración por defecto (6 PIDs, 1 lectura/segundo) esto son varios GB al
+  mes, así que no conviene guardarlas para siempre.
+- **Estadísticas horarias** (`hourly_stats`: mín/máx/media por PID y hora):
+  se agregan automáticamente cada hora a partir de las lecturas en crudo y
+  **se conservan indefinidamente** (ocupan muy poco espacio: unas decenas de
+  miles de filas al año). Son la fuente pensada para tendencias a medio/largo
+  plazo y análisis preventivo.
+- **Eventos** (`events`): solo se registra cuando una alerta empieza/termina
+  o aparece un código DTC nuevo, para no duplicar una fila por cada ciclo de
+  lectura mientras la alerta esté activa.
+
+Las escrituras se bufferizan en memoria y se vuelcan a SQLite en lotes desde
+un hilo de fondo (por defecto cada 5s), para no bloquear el hilo lector de
+OBD-II con I/O de disco y reducir el desgaste de escritura de la SD.
+
+La base de datos vive en `data/jarvis.db` (configurable con `JARVIS_DB_PATH`)
+y no se versiona en git; en Docker persiste gracias al bind mount `.:/app`
+del `docker-compose.yml`.
 
 ## Estructura del proyecto
 
@@ -314,12 +401,17 @@ jarvis-on-road/
 │   │   └── settings.py      # configuración centralizada
 │   ├── leds/
 │   │   ├── __init__.py
-│   │   └── controller.py    # controlador BLE ELK-BLEDOM
+│   │   ├── controller.py    # controlador BLE ELK-BLEDOM
+│   │   └── scheduler.py     # automatización día/noche (amanecer/atardecer)
 │   ├── obd2/
 │   │   ├── __init__.py
 │   │   ├── alerts.py        # umbrales y evaluación de alertas
 │   │   ├── connector.py     # conexión real + mock
 │   │   └── reader.py        # lector periódico de PIDs
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── database.py      # conexión y esquema SQLite
+│   │   └── history.py       # buffer, rollup horario, purga y consultas
 │   └── web/
 │       ├── __init__.py
 │       ├── server.py          # FastAPI + WebSocket
@@ -327,6 +419,7 @@ jarvis-on-road/
 │           └── index.html     # panel web
 │
 ├── config/
+├── data/                    # base de datos SQLite (no versionada)
 ├── tests/
 ├── scripts/
 │   ├── setup_pi.sh          # instala Docker y activa Bluetooth

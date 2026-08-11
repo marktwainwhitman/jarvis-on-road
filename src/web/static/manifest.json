@@ -1,0 +1,25 @@
+{
+  "name": "Jarvis On Road",
+  "short_name": "Jarvis",
+  "description": "Asistente para vehículo: datos OBD-II, alertas y control de luces en tiempo real.",
+  "start_url": "/static/index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

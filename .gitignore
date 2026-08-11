@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 .eggs/
 .venv/
+.venv-test/
 venv/
 env/
 .mypy_cache/
@@ -17,6 +18,10 @@ dist/
 
 # Variables de entorno
 .env
+
+# Base de datos histórica SQLite
+data/*.db
+data/*.db-*
 
 # Docker
 *.log

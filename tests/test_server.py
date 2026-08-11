@@ -46,6 +46,19 @@ def mock_led_controller():
 
 
 @pytest.fixture
+def mock_led_scheduler():
+    scheduler = MagicMock()
+    scheduler.status = {
+        "auto_enabled": False,
+        "is_night": False,
+        "sunrise": "2026-01-01T08:00:00+01:00",
+        "sunset": "2026-01-01T18:00:00+01:00",
+    }
+    scheduler.run = AsyncMock(return_value=None)
+    return scheduler
+
+
+@pytest.fixture
 def client(mock_reader, mock_led_controller):
     app = create_app(mock_reader, mock_led_controller)
     with TestClient(app) as tc:
@@ -124,6 +137,118 @@ def test_static_root_redirect(client):
     res = client.get("/", follow_redirects=False)
     assert res.status_code == 307
     assert res.headers["location"] == "/static/index.html"
+
+
+def test_manifest(client):
+    res = client.get("/manifest.json")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["name"] == "Jarvis On Road"
+    assert data["display"] == "standalone"
+
+
+def test_service_worker(client):
+    res = client.get("/sw.js")
+    assert res.status_code == 200
+    assert "addEventListener" in res.text
+
+
+def test_index_html_is_served(client):
+    res = client.get("/static/index.html")
+    assert res.status_code == 200
+    assert "Jarvis On Road" in res.text
+
+
+def test_static_assets(client):
+    for path in [
+        "/static/css/main.css",
+        "/static/js/app.js",
+        "/static/manifest.json",
+        "/static/icons/icon.svg",
+    ]:
+        res = client.get(path)
+        assert res.status_code == 200, path
+
+
+def test_obd_history_without_store_returns_503(client):
+    res = client.get("/api/obd/history", params={"pid": "RPM"})
+    assert res.status_code == 503
+
+
+def test_obd_stats_without_store_returns_503(client):
+    res = client.get("/api/obd/stats", params={"pid": "RPM"})
+    assert res.status_code == 503
+
+
+def test_obd_events_without_store_returns_503(client):
+    res = client.get("/api/obd/events")
+    assert res.status_code == 503
+
+
+def test_obd_history_with_store(mock_reader, mock_led_controller):
+    history_store = MagicMock()
+    history_store.get_readings.return_value = [{"ts": 1, "value": 2500}]
+    app = create_app(mock_reader, mock_led_controller, history_store)
+    with TestClient(app) as client:
+        res = client.get("/api/obd/history", params={"pid": "RPM", "hours": 2})
+        assert res.status_code == 200
+        assert res.json() == [{"ts": 1, "value": 2500}]
+        history_store.get_readings.assert_called_once()
+        assert history_store.get_readings.call_args.args[0] == "RPM"
+
+
+def test_obd_stats_with_store(mock_reader, mock_led_controller):
+    history_store = MagicMock()
+    history_store.get_hourly_stats.return_value = [
+        {"ts": 1, "min": 1, "max": 2, "avg": 1.5, "count": 2}
+    ]
+    app = create_app(mock_reader, mock_led_controller, history_store)
+    with TestClient(app) as client:
+        res = client.get("/api/obd/stats", params={"pid": "RPM", "days": 3})
+        assert res.status_code == 200
+        assert res.json()[0]["avg"] == 1.5
+
+
+def test_obd_events_with_store(mock_reader, mock_led_controller):
+    history_store = MagicMock()
+    history_store.get_events.return_value = [
+        {"ts": 1, "type": "alert", "pid": "RPM", "level": "critical", "code": None, "message": "x"}
+    ]
+    app = create_app(mock_reader, mock_led_controller, history_store)
+    with TestClient(app) as client:
+        res = client.get("/api/obd/events", params={"days": 1, "type": "alert"})
+        assert res.status_code == 200
+        assert res.json()[0]["type"] == "alert"
+        history_store.get_events.assert_called_once()
+        assert history_store.get_events.call_args.kwargs["event_type"] == "alert"
+
+
+def test_leds_status_without_scheduler_has_no_auto_key(client):
+    res = client.get("/api/leds/status")
+    assert res.status_code == 200
+    assert "auto" not in res.json()
+
+
+def test_leds_auto_without_scheduler_returns_503(client):
+    res = client.post("/api/leds/auto", json={"enabled": True})
+    assert res.status_code == 503
+
+
+def test_leds_status_includes_auto_state(mock_reader, mock_led_controller, mock_led_scheduler):
+    app = create_app(mock_reader, mock_led_controller, None, mock_led_scheduler)
+    with TestClient(app) as client:
+        res = client.get("/api/leds/status")
+        assert res.status_code == 200
+        assert res.json()["auto"]["auto_enabled"] is False
+
+
+def test_leds_auto_toggles_scheduler(mock_reader, mock_led_controller, mock_led_scheduler):
+    app = create_app(mock_reader, mock_led_controller, None, mock_led_scheduler)
+    with TestClient(app) as client:
+        res = client.post("/api/leds/auto", json={"enabled": True})
+        assert res.status_code == 200
+        assert res.json()["success"] is True
+        mock_led_scheduler.set_auto_enabled.assert_called_once_with(True)
 
 
 def test_websocket_receives_data(client, mock_reader):
