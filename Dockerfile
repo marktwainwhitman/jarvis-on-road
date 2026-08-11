@@ -20,15 +20,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Creamos usuario no-root para ejecutar la aplicacion.
-RUN groupadd -r jarvis && useradd -r -g jarvis -d /app jarvis
-
 # Copiamos el entorno virtual ya instalado y la aplicacion.
-COPY --from=builder --chown=jarvis:jarvis /opt/venv /opt/venv
-COPY --chown=jarvis:jarvis . .
+COPY --from=builder /opt/venv /opt/venv
+COPY . .
 
-USER jarvis
-
+# Se ejecuta como root (el contenedor ya corre con privileged: true en
+# docker-compose.yml para acceder a BLE/serie). docker-compose monta el
+# repo del host como bind mount (".:/app"), asi que un usuario no-root aqui
+# no tendria permisos de escritura sobre "data/" ni sobre /dev/rfcomm0 en el
+# host salvo que sus UID/GID coincidieran exactamente con los del host, lo
+# que complicaria el arranque "sin tocar nada" tras un git pull.
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1

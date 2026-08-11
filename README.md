@@ -290,6 +290,14 @@ disponible sin tener que ejecutar nada manualmente.
 - `privileged: true` es la opción más permisiva; si prefieres reducir
   privilegios, puedes probar a quitarlo y usar `cap_add: [NET_ADMIN]` más
   los `devices` necesarios, pero esto requiere ajustes según tu hardware.
+- El contenedor corre como `root` (no como usuario no-root) porque
+  `docker-compose.yml` monta el repo del host como bind mount (`.:/app`):
+  con un usuario no-root, `data/jarvis.db` fallaría con
+  `sqlite3.OperationalError: unable to open database file` salvo que su
+  UID/GID coincidieran exactamente con los del usuario propietario de la
+  carpeta en el host. Dado que ya se usa `privileged: true`, ejecutar como
+  root no añade una superficie de riesgo significativa adicional en este
+  despliegue de un solo dispositivo personal.
 
 ## Luces LED BLE (ELK-BLEDOM / Zengge)
 

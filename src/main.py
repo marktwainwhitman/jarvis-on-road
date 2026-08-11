@@ -37,10 +37,21 @@ def main() -> None:
     history_store = HistoryStore(
         db_path=SETTINGS.db_path, retention_days=SETTINGS.db_retention_days
     )
-    history_store.start()
+    try:
+        history_store.start()
+    except Exception:
+        # No dejamos que un fallo de SQLite (permisos, disco lleno, ruta no
+        # escribible...) tire toda la aplicación: seguimos sin histórico y
+        # los endpoints /api/obd/history, /stats y /events responderán 503.
+        logger.exception(
+            "No se pudo iniciar el histórico SQLite en %s; Jarvis seguirá "
+            "funcionando sin histórico ni estadísticas.",
+            SETTINGS.db_path,
+        )
+        history_store = None
 
     logger.info("Iniciando lector OBD-II...")
-    reader = OBD2Reader(on_sample=history_store.record)
+    reader = OBD2Reader(on_sample=history_store.record if history_store else None)
     reader.start()
 
     logger.info("Inicializando controlador de LEDs...")
@@ -78,7 +89,8 @@ def main() -> None:
         logger.info("Interrupción recibida, cerrando...")
     finally:
         reader.stop()
-        history_store.stop()
+        if history_store:
+            history_store.stop()
         logger.info("Sistema detenido.")
 
 
