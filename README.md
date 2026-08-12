@@ -25,111 +25,56 @@ teléfono móvil, sin necesidad de instalar una app nativa. Cuando un valor
 sobrepasa un umbral la tarjeta cambia de color, aparece un mensaje de
 aviso y, en caso crítico, el móvil vibra.
 
-## Fase 2: OBD-II real y registro a CSV
+## Despliegue autónomo en Raspberry Pi
 
-Esta fase añade la capacidad de dejar la Raspberry Pi funcionando de forma
-autónoma en el coche, leyendo PIDs del ECM vía Bluetooth (Vgate vLinker MC+)
-y registrando cada lectura en archivos CSV planos. No modifica la PWA ni añade
-SQLite: los datos se recogen en crudo para poder inspeccionarlos antes de
-diseñar el esquema definitivo.
+El sistema está pensado para ejecutarse con Docker en la Raspberry y quedar
+funcionando solo en el coche. La PWA sigue disponible en:
 
-Archivos nuevos clave:
+```
+http://IP-de-la-Raspberry:8000
+```
 
-- `src/obd2/pids.py` — catálogo de PIDs estándar.
-- `src/obd2/connector.py` — abstracción `OBDConnection`, `BluetoothOBDConnection`
-  y `MockOBDConnection`.
-- `src/obd2/csv_logger.py` — escritura diaria de lecturas a `data/obd/`.
-- `src/obd2/discovery.py` — herramienta de descubrimiento de PIDs.
-- `src/obd2/collector.py` — punto de entrada autónomo del collector.
+### 1. Emparejar el vLinker MC+ una sola vez
 
-El collector está pensado para ejecutarse en la Raspberry como servicio
-(`python -m src.obd2.collector` o `python src/obd2/collector.py`). Detecta
-pérdida de conexión, reintenta con backoff y sigue escribiendo CSV tras
-recuperarla.
-
-### Descubrir PIDs disponibles (modo mock)
+Con el coche en contacto y el adaptador conectado:
 
 ```bash
-python -m src.obd2.discovery --mock
+bluetoothctl
+agent NoInputNoOutput
+default-agent
+pair 04:25:E8:5B:01:EB   # si pide PIN, introduce 1234
+trust 04:25:E8:5B:01:EB
+quit
 ```
 
-En la Raspberry con el vLinker emparejado:
+Si el adaptador aparece como `vLinker MC-IOS`, pulsa el botón negro del
+adaptador hasta ver `vLinker MC-Android`.
+
+Esto solo hay que hacerlo **una vez**. BlueZ recordará el emparejamiento.
+
+### 2. Instalar servicios systemd
+
+Ajusta `/home/star` a tu usuario si es distinto:
 
 ```bash
-OBD_MOCK=false OBD_PORT=/dev/rfcomm0 python -m src.obd2.discovery
+cd ~/jarvis-on-road
+sudo cp scripts/obd_rfcomm_keepalive.service /etc/systemd/system/
+sudo cp scripts/jarvis.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable obd_rfcomm_keepalive.service jarvis.service
+sudo systemctl start obd_rfcomm_keepalive.service jarvis.service
 ```
 
-### Ejecutar el collector autónomo (modo mock)
+A partir de aquí, al encender la Raspberry se conecta sola, lee datos y los
+expone por la PWA.
+
+### 3. Recuperar los CSV
+
+Los datos se escriben en el host gracias al bind mount `.:/app`:
 
 ```bash
-python -m src.obd2.collector --mock --interval 1.0
+scp pi@IP-Raspberry:~/jarvis-on-road/data/obd/2026-08-12.csv .
 ```
-
-En la Raspberry:
-
-```bash
-OBD_MOCK=false OBD_PORT=/dev/rfcomm0 python -m src.obd2.collector
-```
-
-Produce `data/obd/YYYY-MM-DD.csv` y `logs/jarvis.log`.
-
-### Formato del CSV
-
-```csv
-timestamp,pid,name,value,unit,status,ecu,raw_value
-2026-08-12T17:05:01,+00:00,0C,Engine RPM,846,rpm,VALID,0x7E8,...
-```
-
-Estados posibles:
-
-- `VALID` — valor real recibido.
-- `ZERO` — valor 0 (un cero real, no un nulo).
-- `UNAVAILABLE` — el PID es conocido pero la ECU no devolvió dato.
-- `UNSUPPORTED` — el comando no está soportado por python-obd o la ECU.
-- `COMMUNICATION_ERROR` — error de lectura (desconexión, timeout, etc.).
-
-## Resolución de problemas con Bluetooth vLinker MC+
-
-El vLinker MC+ tiene **dos interfaces Bluetooth**:
-
-- **vLinker MC-Android** → Bluetooth Classic SPP (la que funciona con `rfcomm`).
-- **vLinker MC-IOS** → Bluetooth LE (NO funciona con `rfcomm` en Linux).
-
-La Raspberry debe usar **vLinker MC-Android** con PIN `1234`.
-
-### Paso a paso en la Raspberry
-
-1. Conecta el adaptador al coche y pon contacto (no hace falta motor en
-   marcha).
-2. Si en tu teléfono apareció `vLinker MC-IOS`, pulsa el botón negro del
-   adaptador hasta que aparezca `vLinker MC-Android`.
-3. Ejecuta el diagnóstico Bluetooth:
-   ```bash
-   sudo ./scripts/diagnose_bluetooth.sh
-   ```
-4. Empareja manualmente si el bind automático falla:
-   ```bash
-   bluetoothctl
-   agent NoInputNoOutput
-   default-agent
-   pair 04:25:E8:5B:01:EB       # introducir 1234 si lo pide
-   trust 04:25:E8:5B:01:EB
-   quit
-   ```
-5. Prueba el binding:
-   ```bash
-   sudo OBD_BT_MAC=04:25:E8:5B:01:EB ./scripts/obd_rfcomm_bind.sh
-   ```
-   Debe crear `/dev/rfcomm0`. El log queda en `/var/log/jarvis-obd-bind.log`.
-6. Prueba la línea serie a bajo nivel:
-   ```bash
-   python3 scripts/diagnose_obd.py
-   ```
-   Debe responder algo como `ELM327 v1.5` tras `ATZ` y un hexádecimal tras `0100`.
-7. Si todo lo anterior funciona, prueba python-obd forzando protocolo 6:
-   ```bash
-   OBD_MOCK=false OBD_PROTOCOL=6 python -m src.obd2.discovery
-   ```
 
 ### Variables de entorno útiles
 

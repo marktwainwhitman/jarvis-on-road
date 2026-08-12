@@ -6,29 +6,40 @@
 - Ejecutar localmente en modo mock: `python src/main.py` (por defecto `OBD_MOCK=true`)
 - Ejecutar con Docker: `docker compose up --build`
 - Descubrir PIDs en modo mock: `python -m src.obd2.discovery --mock`
-- Ejecutar collector autónomo en modo mock: `python -m src.obd2.collector --mock --interval 1.0`
-- Ejecutar collector autónomo en la Raspberry: `OBD_MOCK=false python -m src.obd2.collector`
-- Emparejar vLinker MC+ una sola vez: `./scripts/pair_vlinker.sh`
-- Diagnóstico Bluetooth en Raspberry: `sudo ./scripts/diagnose_bluetooth.sh`
-- Diagnóstico serie OBD en Raspberry (tras bind): `python3 scripts/diagnose_obd.py`
-- Forzar binding manual del vLinker: `sudo ./scripts/obd_rfcomm_bind.sh`
-- Instalar servicios systemd autónomos:
-  ```bash
-  sudo cp scripts/obd_rfcomm_keepalive.service /etc/systemd/system/
-  sudo cp scripts/jarvis.service /etc/systemd/system/
-  sudo systemctl daemon-reload
-  sudo systemctl enable obd_rfcomm_keepalive.service jarvis.service
-  sudo systemctl start obd_rfcomm_keepalive.service jarvis.service
-  ```
+
+## Despliegue autónomo en Raspberry Pi (Docker + PWA)
+
+1. Emparejar el vLinker MC+ **una sola vez**:
+   ```bash
+   bluetoothctl
+   agent NoInputNoOutput
+   default-agent
+   pair 04:25:E8:5B:01:EB   # PIN 1234 si lo pide
+   trust 04:25:E8:5B:01:EB
+   quit
+   ```
+
+2. Instalar servicios systemd:
+   ```bash
+   sudo cp scripts/obd_rfcomm_keepalive.service /etc/systemd/system/
+   sudo cp scripts/jarvis.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable obd_rfcomm_keepalive.service jarvis.service
+   sudo systemctl start obd_rfcomm_keepalive.service jarvis.service
+   ```
+
+A partir de aquí, la Raspberry arranca sola, se conecta por Bluetooth al vLinker,
+lee PIDs reales, guarda CSV en `data/obd/` y sirve la PWA en el puerto 8000.
 
 ## Fase actual: OBD-II real a CSV
 
-La arquitectura OBD se mantiene modular:
+El despliegue es con Docker: FastAPI sirve la PWA y la API; `src/main.py` lee
+PIDs reales y escribe `data/obd/YYYY-MM-DD.csv` además del histórico SQLite.
 
 - `src/obd2/connector.py` define `OBDConnection`/`BluetoothOBDConnection`/`MockOBDConnection`.
 - `src/obd2/csv_logger.py` escribe `data/obd/YYYY-MM-DD.csv`.
 - `src/obd2/discovery.py` prueba PIDs y muestra estado.
-- `src/obd2/collector.py` es el punto de entrada autónomo para la Raspberry.
+- `scripts/obd_rfcomm_keepalive.*` mantienen `/dev/rfcomm0` reconectado.
 
 Restricciones de seguridad: todas las comunicaciones con la ECU son **solo lectura**. No se implementa escritura, borrado de DTC, codificación, calibración ni activación de actuadores.
 
