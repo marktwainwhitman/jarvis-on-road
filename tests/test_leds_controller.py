@@ -80,7 +80,7 @@ async def test_turn_on_success_updates_state_and_sends_expected_bytes():
     assert ok is True
     assert controller.status["on"] is True
     client = FakeBleakClient.created_instances[0]
-    assert client.written == [(WRITE_CHAR_UUID, CMD_ON)]
+    assert client.written == [(WRITE_CHAR_UUID, bytes.fromhex("7e0404f00001ff00ef"))]
 
 
 @pytest.mark.asyncio

@@ -3,8 +3,8 @@ services:
     build: .
     container_name: jarvis-on-road
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # network_mode: host hace que el contenedor comparta la pila TCP del host;
+    # no es necesario (ni efectivo) publicar puertos.
     volumes:
       - .:/app
       # LEDs BLE (ELK-BLEDOM): bleak usa BlueZ a través de D-Bus. El puerto
@@ -29,6 +29,7 @@ services:
       # /dev/rfcomm0 lo hace scripts/obd_rfcomm_bind.sh en el host (que ya
       # usa esta misma MAC como valor por defecto).
       - OBD_BT_MAC=04:25:E8:5B:01:EB
+      - TZ=Europe/Madrid
       - JARVIS_HOST=0.0.0.0
       - JARVIS_PORT=8000
       - JARVIS_LOG_LEVEL=info

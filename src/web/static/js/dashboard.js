@@ -182,7 +182,9 @@ export function render(data) {
   const lastUpdate = document.getElementById('last-update');
   if (lastUpdate && data._last_update) {
     const d = new Date(data._last_update);
-    lastUpdate.textContent = 'Actualizado: ' + d.toLocaleTimeString();
+    lastUpdate.textContent =
+      'Actualizado: ' +
+      d.toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid' });
   }
 
   const alertsObj = data.alerts || { level: 'ok', alerts: [], pids: {} };

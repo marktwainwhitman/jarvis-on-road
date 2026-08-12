@@ -11,8 +11,11 @@ logger = logging.getLogger(__name__)
 SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb"
 WRITE_CHAR_UUID = "0000fff3-0000-1000-8000-00805f9b34fb"
 
-CMD_ON = bytes.fromhex("7e040401000eef")
-CMD_OFF = bytes.fromhex("7e040400000fef")
+# Comandos ON/OFF para ELK-BLEDOM/Zengge (formato 9 bytes).
+# LotusLantern/elkbledom: 7E 04 04 <on/off> 00 <flag> FF 00 EF.
+# Para encender se usa 0xF0; para apagar 0x00.
+CMD_ON = bytes.fromhex("7e0404f00001ff00ef")
+CMD_OFF = bytes.fromhex("7e0404000000ff00ef")
 
 MAX_SEND_ATTEMPTS = 2
 
