@@ -8,9 +8,18 @@
 - Descubrir PIDs en modo mock: `python -m src.obd2.discovery --mock`
 - Ejecutar collector autónomo en modo mock: `python -m src.obd2.collector --mock --interval 1.0`
 - Ejecutar collector autónomo en la Raspberry: `OBD_MOCK=false python -m src.obd2.collector`
+- Emparejar vLinker MC+ una sola vez: `./scripts/pair_vlinker.sh`
 - Diagnóstico Bluetooth en Raspberry: `sudo ./scripts/diagnose_bluetooth.sh`
 - Diagnóstico serie OBD en Raspberry (tras bind): `python3 scripts/diagnose_obd.py`
 - Forzar binding manual del vLinker: `sudo ./scripts/obd_rfcomm_bind.sh`
+- Instalar servicios systemd autónomos:
+  ```bash
+  sudo cp scripts/obd_rfcomm_keepalive.service /etc/systemd/system/
+  sudo cp scripts/jarvis.service /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable obd_rfcomm_keepalive.service jarvis.service
+  sudo systemctl start obd_rfcomm_keepalive.service jarvis.service
+  ```
 
 ## Fase actual: OBD-II real a CSV
 

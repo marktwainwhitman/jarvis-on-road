@@ -1,7 +1,7 @@
 [Unit]
 Description=Jarvis On Road
-Requires=docker.service bluetooth.service
-After=docker.service bluetooth.service network-online.target
+Requires=docker.service obd_rfcomm_keepalive.service bluetooth.service
+After=docker.service obd_rfcomm_keepalive.service bluetooth.service network-online.target
 Wants=network-online.target
 
 [Service]

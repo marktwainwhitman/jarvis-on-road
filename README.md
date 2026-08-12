@@ -209,6 +209,45 @@ http://localhost:8000
 | `LED_AUTO_CHECK_INTERVAL` | Segundos entre comprobaciones de si toca cambiar de día a noche o viceversa | `60.0` |
 | `LED_AUTO_PRE_LIGHT_MINUTES` | Minutos que se anticipa el encendido respecto al atardecer real (el apagado sigue ocurriendo en el amanecer real) | `30.0` |
 
+## Despliegue headless autónomo en Raspberry Pi con Docker
+
+Para dejar la Raspberry funcionando sola en el coche sin teclado ni pantalla:
+
+1. **Empareja el vLinker una sola vez** (con contacto puesto):
+   ```bash
+   ./scripts/pair_vlinker.sh
+   ```
+   Si ves `vLinker MC-IOS`, pulsa el botón del adaptador hasta que aparezca
+   `vLinker MC-Android`.
+
+2. **Copia e instala los servicios systemd** (ajusta `/home/star` a tu usuario):
+   ```bash
+   sudo cp scripts/obd_rfcomm_keepalive.service /etc/systemd/system/
+   sudo cp scripts/jarvis.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable obd_rfcomm_keepalive.service
+   sudo systemctl enable jarvis.service
+   ```
+
+3. **Arranca los servicios**:
+   ```bash
+   sudo systemctl start obd_rfcomm_keepalive.service
+   sudo systemctl start jarvis.service
+   ```
+
+4. **Verifica que todo funciona**:
+   ```bash
+   sudo systemctl status obd_rfcomm_keepalive.service
+   sudo systemctl status jarvis.service
+   sudo journalctl -u obd_rfcomm_keepalive.service -f
+   sudo docker logs -f jarvis-on-road
+   ```
+
+`obd_rfcomm_keepalive.service` se encarga de mantener `/dev/rfcomm0` y se
+reconecta automáticamente si el enlace Bluetooth se cae. `jarvis.service`
+arranca el contenedor Docker y el registro CSV se escribe en
+`data/obd/YYYY-MM-DD.csv`.
+
 ## Endpoints y recursos
 
 - `/` – redirige al panel web.

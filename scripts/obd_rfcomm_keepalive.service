@@ -1,0 +1,22 @@
+[Unit]
+Description=Jarvis On Road - OBD-II Bluetooth RFCOMM keepalive
+# Este servicio mantiene /dev/rfcomm0 conectado al vLinker MC+ y se reinicia
+# automaticamente si el enlace Bluetooth se cae (p. ej. al apagar el coche).
+After=bluetooth.service network.target
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+
+# Ajusta la ruta si clonaste el repo en otro sitio.
+WorkingDirectory=/home/star/jarvis-on-road
+EnvironmentFile=-/home/star/jarvis-on-road/.env
+
+ExecStartPre=/home/star/jarvis-on-road/scripts/obd_rfcomm_bind.sh
+ExecStart=/home/star/jarvis-on-road/scripts/obd_rfcomm_keepalive.sh
+ExecStopPost=/usr/bin/rfcomm release 0
+
+[Install]
+WantedBy=multi-user.target

@@ -14,6 +14,8 @@ import uvicorn
 from src.config import SETTINGS
 from src.leds.controller import LEDController
 from src.leds.scheduler import DayNightScheduler
+from src.obd2.connector import PIDReading
+from src.obd2.csv_logger import CSVLogger
 from src.obd2.reader import OBD2Reader
 from src.storage.history import HistoryStore
 from src.web.server import create_app
@@ -51,7 +53,23 @@ def main() -> None:
         history_store = None
 
     logger.info("Iniciando lector OBD-II...")
-    reader = OBD2Reader(on_sample=history_store.record if history_store else None)
+    csv_logger: CSVLogger | None = None
+    if SETTINGS.obd_csv_dir:
+        csv_logger = CSVLogger(SETTINGS.obd_csv_dir, pids=SETTINGS.pids)
+        logger.info("Registro CSV de OBD-II habilitado en %s", SETTINGS.obd_csv_dir)
+
+    def _on_readings(readings: list[PIDReading]) -> None:
+        if csv_logger is None:
+            return
+        try:
+            csv_logger.write(readings)
+        except Exception:
+            logger.exception("Error escribiendo lecturas OBD-II a CSV")
+
+    reader = OBD2Reader(
+        on_sample=history_store.record if history_store else None,
+        on_readings=_on_readings,
+    )
     reader.start()
 
     logger.info("Inicializando controlador de LEDs...")
@@ -91,6 +109,11 @@ def main() -> None:
         reader.stop()
         if history_store:
             history_store.stop()
+        if csv_logger is not None:
+            try:
+                csv_logger.close()
+            except Exception:
+                logger.exception("Error cerrando CSV logger")
         logger.info("Sistema detenido.")
 
 
