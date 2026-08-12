@@ -4,6 +4,7 @@ import threading
 import time
 
 import src.obd2.reader as reader_module
+from src.obd2.connector import PIDReading
 from src.obd2.reader import OBD2Reader
 
 
@@ -18,6 +19,16 @@ class FakeConnection:
     def query(self, pid_name):
         return 42
 
+    def query_pid(self, pid_name):
+        return PIDReading(
+            pid=pid_name,
+            value=42.0,
+            unit=None,
+            status="VALID",
+            raw_value=f"FAKE:{pid_name}",
+            ecu="FAKE",
+        )
+
     def close(self):
         self.closed = True
 
@@ -26,6 +37,12 @@ class FakeConnection:
 
     def get_dtcs(self):
         return []
+
+    def protocol_name(self):
+        return "FAKE"
+
+    def ecu_address(self):
+        return "FAKE"
 
 
 def test_reader_without_connection_has_default_status():
@@ -48,7 +65,7 @@ def _patch_reader(reader):
 
 def test_try_connect_creates_connection_on_success(monkeypatch):
     fake_conn = FakeConnection()
-    monkeypatch.setattr(reader_module, "create_connection", lambda *a, **k: fake_conn)
+    monkeypatch.setattr(reader_module, "create_obd_connection", lambda *a, **k: fake_conn)
 
     reader = _patch_reader(OBD2Reader(connection=None))
     reader._manage_connection = True
@@ -65,7 +82,7 @@ def test_try_connect_keeps_connection_none_on_failure(monkeypatch):
     def _raise(*a, **k):
         raise RuntimeError("adaptador no disponible")
 
-    monkeypatch.setattr(reader_module, "create_connection", _raise)
+    monkeypatch.setattr(reader_module, "create_obd_connection", _raise)
 
     reader = _patch_reader(OBD2Reader(connection=None))
     reader._manage_connection = True
@@ -85,7 +102,7 @@ def test_try_connect_respects_backoff_interval(monkeypatch):
         calls.append(1)
         return FakeConnection()
 
-    monkeypatch.setattr(reader_module, "create_connection", _create)
+    monkeypatch.setattr(reader_module, "create_obd_connection", _create)
 
     reader = _patch_reader(OBD2Reader(connection=None))
     reader._manage_connection = True
@@ -104,7 +121,7 @@ def test_backoff_increases_after_consecutive_failures(monkeypatch):
     def _create(*a, **k):
         raise RuntimeError("adaptador no disponible")
 
-    monkeypatch.setattr(reader_module, "create_connection", _create)
+    monkeypatch.setattr(reader_module, "create_obd_connection", _create)
 
     reader = _patch_reader(OBD2Reader(connection=None))
     reader._manage_connection = True
@@ -132,7 +149,7 @@ def test_backoff_increases_after_consecutive_failures(monkeypatch):
 
 
 def test_success_resets_backoff(monkeypatch):
-    monkeypatch.setattr(reader_module, "create_connection", lambda *a, **k: FakeConnection())
+    monkeypatch.setattr(reader_module, "create_obd_connection", lambda *a, **k: FakeConnection())
 
     reader = _patch_reader(OBD2Reader(connection=None))
     reader._manage_connection = True
@@ -155,7 +172,7 @@ def test_injected_connection_is_not_auto_managed(monkeypatch):
     def _create(*a, **k):
         raise AssertionError("no debería llamarse a create_connection con conexión inyectada")
 
-    monkeypatch.setattr(reader_module, "create_connection", _create)
+    monkeypatch.setattr(reader_module, "create_obd_connection", _create)
 
     reader._try_connect()  # no debe intentar crear ni fallar
 
@@ -171,3 +188,23 @@ def test_get_status_is_safe_without_connection():
     assert status["connected"] is False
     assert status["port"] == reader_module.SETTINGS.obd_port
     assert status["pids"] == ["RPM", "SPEED"]
+
+
+def test_read_sample_calls_on_readings_callback():
+    fake_conn = FakeConnection(connected=True)
+    captured = []
+
+    reader = _patch_reader(
+        OBD2Reader(connection=fake_conn, on_readings=captured.append)
+    )
+    reader._pids = ["RPM", "SPEED"]
+    reader._dtc_interval = 1000.0
+    reader._last_dtc_read = time.time()
+
+    sample = reader._read_sample_locked()
+
+    assert sample["connected"] is True
+    assert sample["RPM"] == 42
+    assert sample["SPEED"] == 42
+    assert len(captured) == 1
+    assert {r.pid for r in captured[0]} == {"RPM", "SPEED"}

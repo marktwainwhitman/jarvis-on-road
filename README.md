@@ -25,6 +25,123 @@ teléfono móvil, sin necesidad de instalar una app nativa. Cuando un valor
 sobrepasa un umbral la tarjeta cambia de color, aparece un mensaje de
 aviso y, en caso crítico, el móvil vibra.
 
+## Fase 2: OBD-II real y registro a CSV
+
+Esta fase añade la capacidad de dejar la Raspberry Pi funcionando de forma
+autónoma en el coche, leyendo PIDs del ECM vía Bluetooth (Vgate vLinker MC+)
+y registrando cada lectura en archivos CSV planos. No modifica la PWA ni añade
+SQLite: los datos se recogen en crudo para poder inspeccionarlos antes de
+diseñar el esquema definitivo.
+
+Archivos nuevos clave:
+
+- `src/obd2/pids.py` — catálogo de PIDs estándar.
+- `src/obd2/connector.py` — abstracción `OBDConnection`, `BluetoothOBDConnection`
+  y `MockOBDConnection`.
+- `src/obd2/csv_logger.py` — escritura diaria de lecturas a `data/obd/`.
+- `src/obd2/discovery.py` — herramienta de descubrimiento de PIDs.
+- `src/obd2/collector.py` — punto de entrada autónomo del collector.
+
+El collector está pensado para ejecutarse en la Raspberry como servicio
+(`python -m src.obd2.collector` o `python src/obd2/collector.py`). Detecta
+pérdida de conexión, reintenta con backoff y sigue escribiendo CSV tras
+recuperarla.
+
+### Descubrir PIDs disponibles (modo mock)
+
+```bash
+python -m src.obd2.discovery --mock
+```
+
+En la Raspberry con el vLinker emparejado:
+
+```bash
+OBD_MOCK=false OBD_PORT=/dev/rfcomm0 python -m src.obd2.discovery
+```
+
+### Ejecutar el collector autónomo (modo mock)
+
+```bash
+python -m src.obd2.collector --mock --interval 1.0
+```
+
+En la Raspberry:
+
+```bash
+OBD_MOCK=false OBD_PORT=/dev/rfcomm0 python -m src.obd2.collector
+```
+
+Produce `data/obd/YYYY-MM-DD.csv` y `logs/jarvis.log`.
+
+### Formato del CSV
+
+```csv
+timestamp,pid,name,value,unit,status,ecu,raw_value
+2026-08-12T17:05:01,+00:00,0C,Engine RPM,846,rpm,VALID,0x7E8,...
+```
+
+Estados posibles:
+
+- `VALID` — valor real recibido.
+- `ZERO` — valor 0 (un cero real, no un nulo).
+- `UNAVAILABLE` — el PID es conocido pero la ECU no devolvió dato.
+- `UNSUPPORTED` — el comando no está soportado por python-obd o la ECU.
+- `COMMUNICATION_ERROR` — error de lectura (desconexión, timeout, etc.).
+
+## Resolución de problemas con Bluetooth vLinker MC+
+
+El vLinker MC+ tiene **dos interfaces Bluetooth**:
+
+- **vLinker MC-Android** → Bluetooth Classic SPP (la que funciona con `rfcomm`).
+- **vLinker MC-IOS** → Bluetooth LE (NO funciona con `rfcomm` en Linux).
+
+La Raspberry debe usar **vLinker MC-Android** con PIN `1234`.
+
+### Paso a paso en la Raspberry
+
+1. Conecta el adaptador al coche y pon contacto (no hace falta motor en
+   marcha).
+2. Si en tu teléfono apareció `vLinker MC-IOS`, pulsa el botón negro del
+   adaptador hasta que aparezca `vLinker MC-Android`.
+3. Ejecuta el diagnóstico Bluetooth:
+   ```bash
+   sudo ./scripts/diagnose_bluetooth.sh
+   ```
+4. Empareja manualmente si el bind automático falla:
+   ```bash
+   bluetoothctl
+   agent NoInputNoOutput
+   default-agent
+   pair 04:25:E8:5B:01:EB       # introducir 1234 si lo pide
+   trust 04:25:E8:5B:01:EB
+   quit
+   ```
+5. Prueba el binding:
+   ```bash
+   sudo OBD_BT_MAC=04:25:E8:5B:01:EB ./scripts/obd_rfcomm_bind.sh
+   ```
+   Debe crear `/dev/rfcomm0`. El log queda en `/var/log/jarvis-obd-bind.log`.
+6. Prueba la línea serie a bajo nivel:
+   ```bash
+   python3 scripts/diagnose_obd.py
+   ```
+   Debe responder algo como `ELM327 v1.5` tras `ATZ` y un hexádecimal tras `0100`.
+7. Si todo lo anterior funciona, prueba python-obd forzando protocolo 6:
+   ```bash
+   OBD_MOCK=false OBD_PROTOCOL=6 python -m src.obd2.discovery
+   ```
+
+### Variables de entorno útiles
+
+| Variable | Descripción | Default |
+|---|---|---|
+| `OBD_BT_MAC` | MAC del vLinker MC+ | `04:25:E8:5B:01:EB` |
+| `OBD_BT_PIN` | PIN de emparejamiento | `1234` |
+| `OBD_BT_CHANNEL` | Canal RFCOMM fijo (si autodetección falla) | autodetectado |
+| `OBD_PROTOCOL` | Protocolo OBD a forzar (`6` = CAN 11-bit 500) | `6` |
+| `OBD_TIMEOUT` | Timeout de conexión python-obd | `30` |
+| `OBD_FAST` | `fast` mode de python-obd | `false` |
+
 ## Tecnologías utilizadas
 
 - Python 3.12
@@ -63,11 +180,18 @@ http://localhost:8000
 |---|---|---|
 | `OBD_PORT` | Puerto serie del adaptador Bluetooth (p. ej. `COM3` o `/dev/rfcomm0`) | `""` |
 | `OBD_MOCK` | `true` para usar datos simulados; `false` para conexión real | `true` |
+| `OBD_PROTOCOL` | Protocolo OBD a forzar (`6` = ISO 15765-4 CAN 11-bit 500) | `6` |
+| `OBD_FAST` | Modo `fast` de python-obd (`true`/`false`) | `false` |
+| `OBD_TIMEOUT` | Timeout de conexión python-obd (s) | `30` |
+| `OBD_BT_PIN` | PIN de emparejamiento del vLinker MC+ | `1234` |
+| `OBD_BT_CHANNEL` | Canal RFCOMM fijo del adaptador (autodetectado si vacío) | `""` |
 | `OBD_READ_INTERVAL` | Segundos entre lecturas de PIDs | `1.0` |
 | `OBD_DTC_INTERVAL` | Segundos entre lecturas de códigos de avería | `30.0` |
 | `OBD_RECONNECT_INTERVAL` | Segundos base entre reintentos de conexión si el adaptador OBD-II no responde o se desconecta | `10.0` |
 | `OBD_MAX_RECONNECT_INTERVAL` | Máximo tiempo entre reintentos de conexión OBD (backoff exponencial) | `300.0` |
 | `OBD_PIDS` | Lista de PIDs separados por comas | `RPM,SPEED,COOLANT_TEMP,ENGINE_LOAD,THROTTLE_POS,INTAKE_TEMP` |
+| `OBD_CSV_DIR` | Directorio donde se guardan los CSV diarios del collector | `data/obd` |
+| `OBD_LOG_PATH` | Ruta del archivo de log del collector autónomo | `logs/jarvis.log` |
 | `JARVIS_HOST` | Dirección en la que escucha el servidor | `0.0.0.0` |
 | `JARVIS_PORT` | Puerto del servidor web | `8000` |
 | `JARVIS_LOG_LEVEL` | Nivel de log (`debug`, `info`, `warning`, `error`) | `info` |

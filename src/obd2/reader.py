@@ -4,11 +4,11 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from src.config import SETTINGS
 from src.obd2.alerts import evaluate
-from src.obd2.connector import OBD2Connection, create_connection
+from src.obd2.connector import OBDConnection, PIDReading, create_obd_connection
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,9 @@ class OBD2Reader:
 
     def __init__(
         self,
-        connection: OBD2Connection = None,
+        connection: OBDConnection = None,
         on_sample: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_readings: Optional[Callable[[List[PIDReading]], None]] = None,
     ):
         # Si se inyecta una conexión (p. ej. en tests) se usa tal cual y no se
         # gestiona su reconexión automática. Si no, la conexión se crea de
@@ -27,10 +28,10 @@ class OBD2Reader:
         # arranque de la aplicación si el adaptador OBD-II no responde.
         self._connection = connection
         self._manage_connection = connection is None
-        # Callback opcional invocado con cada muestra leída (p. ej. para
-        # persistirla en el histórico). Nunca debe bloquear ni propagar
-        # excepciones al hilo lector.
+        # Callbacks opcionales invocados con cada muestra leída. Nunca deben
+        # bloquear ni propagar excepciones al hilo lector.
         self._on_sample = on_sample
+        self._on_readings = on_readings
         self._interval = SETTINGS.read_interval
         self._dtc_interval = SETTINGS.dtc_interval
         self._reconnect_interval = SETTINGS.obd_reconnect_interval
@@ -114,8 +115,13 @@ class OBD2Reader:
                         self._connection.close()
                     except Exception:
                         logger.exception("Error cerrando conexión OBD-II previa")
-                self._connection = create_connection(
-                    SETTINGS.obd_port, self._pids, mock=SETTINGS.obd_mock
+                self._connection = create_obd_connection(
+                    port=SETTINGS.obd_port,
+                    pids=self._pids,
+                    mock=SETTINGS.obd_mock,
+                    protocol=SETTINGS.obd_protocol or None,
+                    timeout=SETTINGS.obd_timeout,
+                    fast=SETTINGS.obd_fast,
                 )
                 self._consecutive_failures = 0
                 logger.info("Conexión OBD-II establecida.")
@@ -134,13 +140,21 @@ class OBD2Reader:
     def _read_sample_locked(self) -> Dict[str, Any]:
         # Debe llamarse con self._conn_lock adquirido.
         sample: Dict[str, Any] = {"connected": self._connection.is_connected()}
+        readings: List[PIDReading] = []
         for pid in self._pids:
             try:
-                value = self._connection.query(pid)
-                sample[pid] = _serialize_value(value)
+                reading = self._connection.query_pid(pid)
+                readings.append(reading)
+                sample[pid] = _serialize_value(reading.value)
             except Exception:
                 logger.exception("Error leyendo PID %s", pid)
                 sample[pid] = None
+
+        if self._on_readings is not None:
+            try:
+                self._on_readings(readings)
+            except Exception:
+                logger.exception("Error en callback on_readings")
 
         now = time.time()
         if now - self._last_dtc_read >= self._dtc_interval:

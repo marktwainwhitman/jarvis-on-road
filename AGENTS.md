@@ -5,6 +5,28 @@
 - Ejecutar tests: `python -m pytest -v`
 - Ejecutar localmente en modo mock: `python src/main.py` (por defecto `OBD_MOCK=true`)
 - Ejecutar con Docker: `docker compose up --build`
+- Descubrir PIDs en modo mock: `python -m src.obd2.discovery --mock`
+- Ejecutar collector autónomo en modo mock: `python -m src.obd2.collector --mock --interval 1.0`
+- Ejecutar collector autónomo en la Raspberry: `OBD_MOCK=false python -m src.obd2.collector`
+- Diagnóstico Bluetooth en Raspberry: `sudo ./scripts/diagnose_bluetooth.sh`
+- Diagnóstico serie OBD en Raspberry (tras bind): `python3 scripts/diagnose_obd.py`
+- Forzar binding manual del vLinker: `sudo ./scripts/obd_rfcomm_bind.sh`
+
+## Fase actual: OBD-II real a CSV
+
+La arquitectura OBD se mantiene modular:
+
+- `src/obd2/connector.py` define `OBDConnection`/`BluetoothOBDConnection`/`MockOBDConnection`.
+- `src/obd2/csv_logger.py` escribe `data/obd/YYYY-MM-DD.csv`.
+- `src/obd2/discovery.py` prueba PIDs y muestra estado.
+- `src/obd2/collector.py` es el punto de entrada autónomo para la Raspberry.
+
+Restricciones de seguridad: todas las comunicaciones con la ECU son **solo lectura**. No se implementa escritura, borrado de DTC, codificación, calibración ni activación de actuadores.
+
+No continuar con SQLite, FastAPI, WebSocket, PWA ni análisis predictivo hasta que se
+valide establemente:
+
+Raspberry Pi Zero 2 W -> Bluetooth -> Vgate vLinker MC+ -> Kia Ceed -> ECM -> CSV.
 
 ## Estructura de la PWA
 

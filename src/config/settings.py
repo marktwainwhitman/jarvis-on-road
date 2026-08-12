@@ -11,10 +11,18 @@ class Settings:
 
     obd_port: str = os.getenv("OBD_PORT", "")
     obd_mock: bool = os.getenv("OBD_MOCK", "true").lower() in ("1", "true", "yes")
+    # Protocolo OBD a forzar con python-obd. Para Kia Ceed 2025 (CAN 11-bit 500 kbaud)
+    # usar "6". Dejar vacío para autodetección (más lento, menos fiable en algunos
+    # adaptadores). Valores posibles: "1".."A".
+    obd_protocol: str = os.getenv("OBD_PROTOCOL", "6")
+    obd_fast: bool = os.getenv("OBD_FAST", "false").lower() in ("1", "true", "yes")
+    obd_timeout: float = float(os.getenv("OBD_TIMEOUT", "30"))
     read_interval: float = float(os.getenv("OBD_READ_INTERVAL", "1.0"))
     dtc_interval: float = float(os.getenv("OBD_DTC_INTERVAL", "30.0"))
     obd_reconnect_interval: float = float(os.getenv("OBD_RECONNECT_INTERVAL", "10.0"))
     obd_max_reconnect_interval: float = float(os.getenv("OBD_MAX_RECONNECT_INTERVAL", "300.0"))
+    obd_csv_dir: str = os.getenv("OBD_CSV_DIR", "data/obd")
+    obd_log_path: str = os.getenv("OBD_LOG_PATH", "logs/jarvis.log")
     led_enabled: bool = os.getenv("LED_ENABLED", "false").lower() in ("1", "true", "yes")
     led_mac: str = os.getenv("LED_MAC", "")
     led_ble_timeout: float = float(os.getenv("LED_BLE_TIMEOUT", "15.0"))
