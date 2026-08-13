@@ -56,7 +56,7 @@ class Settings:
                     pid.strip()
                     for pid in os.getenv(
                         "OBD_PIDS",
-                        "RPM,SPEED,COOLANT_TEMP,ENGINE_LOAD,THROTTLE_POS,INTAKE_TEMP",
+                        "RPM,SPEED,COOLANT_TEMP,ENGINE_LOAD,THROTTLE_POS,INTAKE_TEMP,MAF,INTAKE_PRESSURE,SHORT_FUEL_TRIM_1,LONG_FUEL_TRIM_1,FUEL_PRESSURE,CONTROL_MODULE_VOLTAGE,TIMING_ADVANCE,EGR_ERROR,RUN_TIME,FUEL_LEVEL,O2_B1S1,O2_B1S2,CATALYST_TEMP_B1S1,CATALYST_TEMP_B1S2,STATUS",
                     ).split(",")
                     if pid.strip()
                 ],

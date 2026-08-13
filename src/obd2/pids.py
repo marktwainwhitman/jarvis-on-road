@@ -70,6 +70,12 @@ PID_REGISTRY: Dict[str, PIDDescriptor] = {
     "O2_B1S2": PIDDescriptor(
         "O2_B1S2", "O2 Bank 1 Sensor 2 Voltage", "V", pid_hex="15", category="medium"
     ),
+    "CATALYST_TEMP_B1S1": PIDDescriptor(
+        "CATALYST_TEMP_B1S1", "Catalyst Temperature Bank 1 Sensor 1", "°C", pid_hex="3C", category="medium"
+    ),
+    "CATALYST_TEMP_B1S2": PIDDescriptor(
+        "CATALYST_TEMP_B1S2", "Catalyst Temperature Bank 1 Sensor 2", "°C", pid_hex="3E", category="medium"
+    ),
     # Diagnóstico / monitor
     "STATUS": PIDDescriptor(
         "STATUS", "OBD Monitor Status", "", pid_hex="01", category="diagnostic"
