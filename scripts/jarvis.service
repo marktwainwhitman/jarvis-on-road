@@ -21,13 +21,18 @@ EnvironmentFile=-/home/star/jarvis-on-road/.env
 # y el lector OBD reintentara la conexion por software.
 ExecStartPre=/home/star/jarvis-on-road/scripts/obd_rfcomm_bind.sh
 
-# Construye la imagen por separado para que el arranque del servicio no se
-# quede bloqueado en Raspberry Pi Zero 2 W. Si el build supera el timeout,
-# se puede hacer manualmente con: docker compose build
-ExecStartPre=-/usr/bin/docker compose build
+# NOTA: no se reconstruye la imagen automaticamente en el arranque del servicio
+# porque en Raspberry Pi Zero 2 W el build puede tardar mucho o quedarse
+# sin memoria. Construye la imagen manualmente tras un git pull o cambio en
+# requirements.txt/Dockerfile con:
+#
+#   cd /home/star/jarvis-on-road
+#   docker compose build
+#
+# El servicio solo levanta el contenedor existente.
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=600
+TimeoutStartSec=180
 
 [Install]
 WantedBy=multi-user.target
